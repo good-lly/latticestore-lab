@@ -1,0 +1,89 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>JSON-Joy File List Merger</title>
+    <link
+      href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.8/dist/css/bootstrap.min.css"
+      rel="stylesheet"
+      integrity="sha384-sRIl4kxILFvY47J16cr9ZwB07vP4J8+LH7qKQnuqkuIAvNWLzeN8tE5YBujZqJLB"
+      crossorigin="anonymous"
+    />
+    <link href="/node_modules/jsoneditor/dist/jsoneditor.css" rel="stylesheet" type="text/css" />
+    <script
+      src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.8/dist/js/bootstrap.bundle.min.js"
+      integrity="sha384-FKyoEForCGlyvwx9Hj09JcYn3nv7wiPVlz7YYwJrWVcXK/BmnVDxM+D2scQbITxI"
+      crossorigin="anonymous"
+    ></script>
+  </head>
+  <body>
+    <div class="container">
+      <div class="row align-items-start">
+        <div class="col">
+          <h5>📁 Left Object</h5>
+          <div id="leftList" class="file-list"></div>
+          <!-- <button class="add-btn" onclick="addFile('left')">+ Add File</button> -->
+        </div>
+        <div class="col">
+          <h5>📁 Right Object</h5>
+          <div id="rightList" class="file-list"></div>
+          <!-- <button class="add-btn" onclick="addFile('right')">+ Add File</button> -->
+        </div>
+        <div class="col merge-section">
+          <div id="result" class="result">Server</div>
+
+          <div id="serverList"></div>
+        </div>
+      </div>
+    </div>
+
+    <script type="module">
+      // import * as jsonCRDT from 'json-joy/esm/json-crdt';
+      import { Model, s } from 'json-joy/esm/json-crdt';
+      import JSONEditor from 'jsoneditor';
+      const schema = s.obj({
+        name: s.str('Jeo Boden'),
+        tags: s.arr(s.str('token')),
+      });
+      const model = Model.create(schema);
+      const patch = model.api.flush();
+
+      console.log('model: ', model);
+      console.log('model view: ', model.view());
+      console.log('patch: ', patch);
+
+      const leftObject = model.view();
+      const container = document.getElementById('leftList');
+      const options = {
+        mode: 'tree',
+        modes: ['view', 'code', 'form', 'text', 'tree', 'preview'], // allowed modes
+        onError: function (err) {
+          alert(err.toString());
+        },
+        onEvent: function (node, event) {
+          if (event.type === 'keydown') {
+            const path = node.path;
+            const value = node.value;
+            const modelNode = model.api.find(path);
+            console.log(modelNode);
+            if (modelNode.root && typeof modelNode.root.data === 'string') {
+              const strApi = model.api.str(path);
+              const currentLength = strApi.length();
+              // strApi.del(0, currentLength);
+              strApi.merge(value);
+              const patch = model.api.flush();
+              console.log('model view: ', model.view());
+            }
+          }
+        },
+      };
+      const editor = new JSONEditor(container, options, leftObject);
+
+      const model2 = Model.create(schema);
+      const rightObject = model2.view();
+      const editor2 = new JSONEditor(document.getElementById('rightList'), options, rightObject);
+      // const merged = jsonMerge(leftObject, rightObject);
+    </script>
+  </body>
+</html>

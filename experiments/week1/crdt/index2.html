@@ -1,0 +1,405 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>JSON-Joy CRDT Merge Benchmark</title>
+    <link
+      href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.8/dist/css/bootstrap.min.css"
+      rel="stylesheet"
+      integrity="sha384-sRIl4kxILFvY47J16cr9ZwB07vP4J8+LH7qKQnuqkuIAvNWLzeN8tE5YBujZqJLB"
+      crossorigin="anonymous"
+    />
+    <style>
+      .console-output {
+        background-color: #1e1e1e;
+        color: #d4d4d4;
+        font-family: 'Courier New', monospace;
+        padding: 20px;
+        border-radius: 8px;
+        height: 600px;
+        overflow-y: auto;
+        margin-top: 20px;
+      }
+      .console-line {
+        margin: 2px 0;
+        line-height: 1.5;
+      }
+      .console-header {
+        color: #4ec9b0;
+        font-weight: bold;
+      }
+      .console-success {
+        color: #4fc1ff;
+      }
+      .console-error {
+        color: #f48771;
+      }
+      .console-warning {
+        color: #dcdcaa;
+      }
+      .btn-run {
+        margin-top: 20px;
+      }
+      .stats-card {
+        margin-top: 20px;
+      }
+    </style>
+  </head>
+  <body>
+    <div class="container mt-5">
+      <div class="row">
+        <div class="col-12">
+          <h2 class="mb-4">JSON-Joy CRDT Merge Benchmark</h2>
+          <div class="alert alert-info">
+            <strong>Info:</strong> This benchmark creates two CRDT structures with 1000 file entries each and measures
+            merge performance.
+          </div>
+
+          <div class="row">
+            <div class="col-md-6">
+              <div class="card stats-card">
+                <div class="card-body">
+                  <h5 class="card-title">Benchmark Configuration</h5>
+                  <p class="card-text">
+                    <strong>Entries per model:</strong> <span id="entry-count">1000</span><br />
+                    <strong>Session ID 1:</strong> <span id="session1">1001</span><br />
+                    <strong>Session ID 2:</strong> <span id="session2">2002</span><br />
+                    <strong>Iterations:</strong> <span id="iterations">10</span>
+                  </p>
+                </div>
+              </div>
+            </div>
+            <div class="col-md-6">
+              <div class="card stats-card">
+                <div class="card-body">
+                  <h5 class="card-title">Results Summary</h5>
+                  <p class="card-text" id="results-summary">Click "Run Benchmark" to start...</p>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <button id="runBenchmark" class="btn btn-primary btn-lg btn-run">Run Benchmark</button>
+          <button id="clearConsole" class="btn btn-secondary btn-lg btn-run ms-2">Clear Console</button>
+
+          <div class="console-output" id="console">
+            <div class="console-line console-header">Ready to run benchmark...</div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <script type="module">
+      import { Model, s } from 'json-joy/esm/json-crdt';
+      //   import { cloneBinary } from 'json-joy/esm/json-clone';
+      import { encode, decode } from 'json-joy/esm/json-crdt-patch/codec/binary';
+
+      // Console output helper
+      const consoleElement = document.getElementById('console');
+      const log = (message, type = 'normal') => {
+        const line = document.createElement('div');
+        line.className = 'console-line';
+        if (type === 'header') line.className += ' console-header';
+        if (type === 'success') line.className += ' console-success';
+        if (type === 'error') line.className += ' console-error';
+        if (type === 'warning') line.className += ' console-warning';
+        line.textContent = message;
+        consoleElement.appendChild(line);
+        consoleElement.scrollTop = consoleElement.scrollHeight;
+      };
+
+      // UUID v4 generator for browser
+      function uuidv4() {
+        return ([1e7] + -1e3 + -4e3 + -8e3 + -1e11).replace(/[018]/g, c =>
+          (c ^ (crypto.getRandomValues(new Uint8Array(1))[0] & (15 >> (c / 4)))).toString(16),
+        );
+      }
+
+      // Generate random encryption key
+      const generateEncKey = () => {
+        return Array.from(crypto.getRandomValues(new Uint8Array(32)))
+          .map(b => b.toString(16).padStart(2, '0'))
+          .join('');
+      };
+
+      // Generate random file name
+      const generateFileName = index => {
+        const names = ['documents', 'images', 'videos', 'data', 'config', 'logs', 'cache', 'temp'];
+        const extensions = ['.txt', '.json', '.xml', '.bin', '.dat', '.log'];
+        const baseName = names[Math.floor(Math.random() * names.length)];
+        return `${baseName}-${index}${extensions[Math.floor(Math.random() * extensions.length)]}`;
+      };
+
+      // Generate random size
+      const generateSize = () => Math.floor(Math.random() * 1000000);
+
+      // Create a single file entry (plain object)
+      const createFileEntry = (index, parentIds) => {
+        const hasParent = index > 0 && Math.random() > 0.3 && parentIds.length > 0;
+        return {
+          objectId: uuidv4(),
+          parentId: hasParent ? parentIds[Math.floor(Math.random() * parentIds.length)] : null,
+          name: generateFileName(index),
+          type: 'lattice/vfs',
+          encKey: generateEncKey(),
+          etag: null,
+          chunks: [],
+          size: generateSize(),
+        };
+      };
+
+      // Create file system schema
+      const createFileSystemSchema = () => {
+        return s.obj({
+          metadata: s.obj({
+            sessionId: s.val(0),
+            timestamp: s.val(Date.now()),
+            version: s.con(1),
+          }),
+          files: s.arr(
+            s.obj({
+              objectId: s.str(),
+              parentId: s.val(null), // can hold null or string
+              name: s.str(),
+              type: s.str(),
+              encKey: s.str(),
+              etag: s.val(null), // nullable
+              chunks: s.arr(s.str()), // array of strings
+              size: s.val(0), // mutable number
+            }),
+          ),
+        });
+      };
+
+      // Generate file entries and add to model
+      const populateModel = (model, count, sessionId) => {
+        const entries = [];
+        const objectIds = [];
+
+        // Set metadata
+        model.api.obj([]).get('metadata').set({
+          sessionId: sessionId,
+          timestamp: Date.now(),
+        });
+
+        // Generate entries
+        for (let i = 0; i < count; i++) {
+          const entry = createFileEntry(i, objectIds);
+          entries.push(entry);
+          objectIds.push(entry.objectId);
+        }
+
+        // Add all entries to the files array
+        const filesApi = model.api.obj([]).get('files');
+        entries.forEach((entry, idx) => {
+          // filesApi.ins(idx, [model.api.obj([]).val(entry)]);
+          filesApi.ins(idx, [model.schema.get('files').val(entry)]);
+        });
+
+        return entries;
+      };
+
+      // Browser-compatible benchmark function
+      const benchmark = async (name, fn, iterations = 10) => {
+        const times = [];
+
+        // Warmup
+        for (let i = 0; i < 3; i++) {
+          await fn();
+        }
+
+        // Actual benchmark
+        for (let i = 0; i < iterations; i++) {
+          const start = performance.now();
+          await fn();
+          const end = performance.now();
+          times.push(end - start);
+        }
+
+        const avg = times.reduce((a, b) => a + b, 0) / times.length;
+        const min = Math.min(...times);
+        const max = Math.max(...times);
+
+        log(`${name}:`, 'header');
+        log(`  Average: ${avg.toFixed(2)}ms`);
+        log(`  Min: ${min.toFixed(2)}ms`);
+        log(`  Max: ${max.toFixed(2)}ms`);
+
+        return { avg, min, max, times };
+      };
+
+      // Main benchmark function
+      const runBenchmark = async () => {
+        const ENTRY_COUNT = 1000;
+        const sessionId1 = 1001;
+        const sessionId2 = 2002;
+
+        log('================================================================================', 'header');
+        log('                    JSON-Joy CRDT Merge Benchmark', 'header');
+        log('================================================================================', 'header');
+        log(`Generating ${ENTRY_COUNT} entries for each CRDT structure...`);
+        log('');
+
+        // Create models
+        log('Creating first CRDT structure...', 'warning');
+        const schema1 = createFileSystemSchema();
+        const model1 = Model.create(schema1, sessionId1);
+        const entries1 = populateModel(model1, ENTRY_COUNT, sessionId1);
+
+        log('Creating second CRDT structure...', 'warning');
+        const schema2 = createFileSystemSchema();
+        const model2 = Model.create(schema2, sessionId2);
+        const entries2 = populateModel(model2, ENTRY_COUNT, sessionId2);
+
+        // Display stats
+        log('');
+        log('Model Statistics:', 'header');
+        log(`Model 1:`);
+        log(`  Session ID: ${model1.clock.sid}`);
+        log(`  Logical Time: ${model1.clock.time}`);
+        log(`  Files count: ${model1.view().files.length}`);
+
+        log(`Model 2:`);
+        log(`  Session ID: ${model2.clock.sid}`);
+        log(`  Logical Time: ${model2.clock.time}`);
+        log(`  Files count: ${model2.view().files.length}`);
+
+        // Benchmark serialization
+        log('');
+        log('Phase 1: Serialization', 'header');
+        let patch1, patch2;
+        let binaryPatch1, binaryPatch2;
+
+        await benchmark('Create Patch (Model 1)', () => {
+          patch1 = model1.api.flush();
+        });
+
+        await benchmark('Create Patch (Model 2)', () => {
+          patch2 = model2.api.flush();
+        });
+
+        // Binary encoding benchmark
+        if (patch1 && patch2) {
+          await benchmark('Binary Encoding (Model 1)', () => {
+            binaryPatch1 = encode(patch1);
+          });
+
+          await benchmark('Binary Encoding (Model 2)', () => {
+            binaryPatch2 = encode(patch2);
+          });
+
+          log('');
+          log(`Binary Patch Sizes:`, 'warning');
+          log(`  Model 1: ${(binaryPatch1.byteLength / 1024).toFixed(2)} KB`);
+          log(`  Model 2: ${(binaryPatch2.byteLength / 1024).toFixed(2)} KB`);
+        }
+
+        // Benchmark merging
+        log('');
+        log('Phase 2: Merge Operations', 'header');
+
+        // Need to create fresh patches for merging
+        const mergePatch1 = model1.api.flush();
+        const mergePatch2 = model2.api.flush();
+
+        const mergeResults1 = await benchmark('Merge Model1 <- Model2', () => {
+          const testModel = model1.fromBinary().fork();
+          if (mergePatch2) {
+            testModel.applyPatch(mergePatch2);
+          }
+        });
+
+        const mergeResults2 = await benchmark('Merge Model2 <- Model1', () => {
+          const testModel = model2.fromBinary().fork();
+          if (mergePatch1) {
+            testModel.applyPatch(mergePatch1);
+          }
+        });
+
+        // Verify convergence
+        log('');
+        log('Phase 3: Convergence Verification', 'header');
+
+        const finalModel1 = model1.fromBinary().fork();
+        const finalModel2 = model2.fromBinary().fork();
+
+        if (mergePatch2) finalModel1.applyPatch(mergePatch2);
+        if (mergePatch1) finalModel2.applyPatch(mergePatch1);
+
+        const final1Count = finalModel1.view().files.length;
+        const final2Count = finalModel2.view().files.length;
+
+        log(`Final Model 1 Files: ${final1Count}`);
+        log(`Final Model 2 Files: ${final2Count}`);
+
+        if (final1Count === final2Count) {
+          log(`✅ Convergence Verified: Both models have ${final1Count} files`, 'success');
+        } else {
+          log(`❌ Convergence Failed: Model 1 has ${final1Count}, Model 2 has ${final2Count}`, 'error');
+        }
+
+        // Sample entries
+        log('');
+        log('Sample Merged Entries:', 'header');
+        const mergedView = finalModel1.view();
+        for (let i = 0; i < Math.min(3, mergedView.files.length); i++) {
+          const file = mergedView.files[i];
+          log(`Entry ${i + 1}:`);
+          log(`  objectId: ${file.objectId.substring(0, 8)}...`);
+          log(`  name: ${file.name}`);
+          log(`  size: ${file.size} bytes`);
+        }
+
+        // Memory info (if available)
+        log('');
+        log('Browser Memory Info:', 'header');
+        if (performance.memory) {
+          const mem = performance.memory;
+          log(`  Used JS Heap: ${(mem.usedJSHeapSize / 1024 / 1024).toFixed(2)} MB`);
+          log(`  Total JS Heap: ${(mem.totalJSHeapSize / 1024 / 1024).toFixed(2)} MB`);
+          log(`  Heap Limit: ${(mem.jsHeapSizeLimit / 1024 / 1024).toFixed(2)} MB`);
+        } else {
+          log('  Memory API not available in this browser', 'warning');
+        }
+
+        // Update summary
+        const summary = document.getElementById('results-summary');
+        summary.innerHTML = `
+          <strong>✅ Benchmark Complete</strong><br>
+          <strong>Avg Merge Time:</strong> ${((mergeResults1.avg + mergeResults2.avg) / 2).toFixed(2)}ms<br>
+          <strong>Total Files:</strong> ${final1Count}<br>
+          <strong>Convergence:</strong> ${final1Count === final2Count ? 'Verified' : 'Failed'}
+        `;
+
+        log('');
+        log('================================================================================', 'header');
+        log('✅ Benchmark completed successfully!', 'success');
+        log('================================================================================', 'header');
+      };
+
+      // Event listeners
+      document.getElementById('runBenchmark').addEventListener('click', async () => {
+        const btn = document.getElementById('runBenchmark');
+        btn.disabled = true;
+        btn.textContent = 'Running...';
+
+        try {
+          await runBenchmark();
+        } catch (error) {
+          log(`❌ Benchmark failed: ${error.message}`, 'error');
+          console.error(error);
+        } finally {
+          btn.disabled = false;
+          btn.textContent = 'Run Benchmark';
+        }
+      });
+
+      document.getElementById('clearConsole').addEventListener('click', () => {
+        consoleElement.innerHTML =
+          '<div class="console-line console-header">Console cleared. Ready to run benchmark...</div>';
+        document.getElementById('results-summary').innerHTML = 'Click "Run Benchmark" to start...';
+      });
+    </script>
+  </body>
+</html>

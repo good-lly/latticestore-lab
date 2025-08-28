@@ -1,0 +1,209 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <link
+      rel="icon"
+      href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' width='32' height='32'><rect width='100%' height='100%' fill='red'/></svg>"
+    />
+
+    <title>JSON-Joy File List Merger</title>
+    <link
+      href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.8/dist/css/bootstrap.min.css"
+      rel="stylesheet"
+      integrity="sha384-sRIl4kxILFvY47J16cr9ZwB07vP4J8+LH7qKQnuqkuIAvNWLzeN8tE5YBujZqJLB"
+      crossorigin="anonymous"
+    />
+    <link href="/node_modules/jsoneditor/dist/jsoneditor.css" rel="stylesheet" type="text/css" />
+    <script
+      src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.8/dist/js/bootstrap.bundle.min.js"
+      integrity="sha384-FKyoEForCGlyvwx9Hj09JcYn3nv7wiPVlz7YYwJrWVcXK/BmnVDxM+D2scQbITxI"
+      crossorigin="anonymous"
+    ></script>
+  </head>
+  <body>
+    <div class="container">
+      <form id="roomForm">
+        <div class="mb-3">
+          <label for="roomId" class="form-label">Enter Room ID</label>
+          <input type="text" class="form-control" id="roomId" placeholder="Room ID" />
+        </div>
+        <button type="submit" class="btn btn-primary mb-3">Change Room ID</button>
+      </form>
+      <button type="button" class="btn btn-primary pick-file">Pick Files</button>
+      <div id="jsoneditorDiv" style="height: 600px; margin-top: 20px"></div>
+    </div>
+
+    <script type="module">
+      import * as Y from 'yjs';
+      import { WebrtcProvider } from 'y-webrtc';
+      import localforage from 'localforage';
+      import JSONEditor from 'jsoneditor';
+
+      const getOrSetRoomKey = async () => {
+        let roomKeyValue = null;
+        try {
+          roomKeyValue = await localforage.getItem('roomkey');
+          if (!roomKeyValue) {
+            roomKeyValue = [...crypto.getRandomValues(new Uint8Array(3))]
+              .map(m => ('0' + m.toString(16)).slice(-2))
+              .join('');
+            await localforage.setItem('roomkey', roomKeyValue);
+          }
+          console.log('roomkey is: ', roomKeyValue);
+          document.getElementById('roomId').value = roomKeyValue;
+        } catch (err) {
+          // This code runs if there were any errors.
+          console.log(err);
+        }
+        return roomKeyValue;
+      };
+
+      const roomKey = await getOrSetRoomKey();
+      const doc1 = new Y.Doc();
+      let ymap1 = doc1.getMap('files');
+      // doc1.on('update', update => {
+      //   console.log('Yjs document updated: ', update);
+      // });
+
+      const handleMessage = m => {
+        console.log('WebRTC message received: ', m);
+      };
+
+      const generateUUID = () => {
+        return ([1e7] + -1e3 + -4e3 + -8e3 + -1e11).replace(/[018]/g, c =>
+          (c ^ (crypto.getRandomValues(new Uint8Array(1))[0] & (15 >> (c / 4)))).toString(16),
+        );
+      };
+
+      const generateEncKey = () => {
+        return Array.from(crypto.getRandomValues(new Uint8Array(32)))
+          .map(b => b.toString(16).padStart(2, '0'))
+          .join('');
+      };
+
+      const generateJSONTree = ymap => {
+        // Convert Y.Map to plain JS object keyed by objectId
+        const nodes = {};
+        ymap.forEach((value, key) => {
+          nodes[key] = { ...value, children: [] };
+        });
+
+        // Root collection
+        const roots = [];
+
+        // Build hierarchy
+        Object.values(nodes).forEach(node => {
+          if (node.parentId && nodes[node.parentId]) {
+            nodes[node.parentId].children.push(node);
+          } else {
+            roots.push(node);
+          }
+        });
+
+        // Clean up output: rename objectId → _id, remove parentId, format dirs/files
+        function cleanNode(node) {
+          const { objectId, parentId, children, ...rest } = node;
+          const cleaned = {
+            ...(node.type === 'file' ? { _id: objectId } : {}),
+            ...rest,
+          };
+
+          if (node.type === 'directory') {
+            cleaned.children = node.children.map(cleanNode);
+          }
+          return cleaned;
+        }
+
+        return roots.map(cleanNode);
+      };
+
+      const createEntry = (objectId, parentId, name, size, type) => {
+        return {
+          objectId: objectId,
+          parentId: parentId || null,
+          name: name,
+          encKey: generateEncKey(),
+          size: size || 0,
+          type: type || 'file',
+        };
+      };
+
+      const changeStatus = s => {
+        console.log('WebRTC status changed: ', s);
+        if (s.connected) {
+          console.log('WebRTC connection established check the doc!');
+          ymap1 = doc1.getMap('files');
+          console.log('ymap1 contents:', ymap1.size, generateJSONTree(ymap1));
+        }
+      };
+      const form = document.getElementById('roomForm');
+      form.addEventListener('submit', event => {
+        try {
+          event.preventDefault(); // Prevent page refresh
+          const roomId = document.getElementById('roomId').value;
+          if (roomId) {
+            localforage.setItem('roomkey', roomId).then(() => {
+              console.log('Room ID changed to: ', roomId);
+              provider.disconnect();
+              provider = new WebrtcProvider('room_' + roomId, doc1, {
+                signaling: ['wss://yjs-provider-test-1.jensenwtfwtf.workers.dev/yjs/ws/room_' + roomId],
+                password: null,
+                filterBcConns: true,
+              });
+              provider.connect();
+            });
+          }
+        } catch (error) {
+          console.error('Error changing room ID: ', error);
+        }
+      });
+
+      let provider = new WebrtcProvider('room_' + roomKey, doc1, {
+        signaling: ['wss://yjs-provider-test-1.jensenwtfwtf.workers.dev/yjs/ws/room_' + roomKey],
+        password: null,
+        filterBcConns: true,
+      });
+      provider.on('message', m => handleMessage(m));
+      provider.on('status', s => changeStatus(s));
+      provider.on('connect', () => console.log('WebRTC connection established.'));
+
+      const container = document.getElementById('jsoneditorDiv');
+
+      document.querySelector('.pick-file').onclick = async () => {
+        try {
+          const dirHandle = await window.showDirectoryPicker();
+
+          // Recursive traversal
+          async function processDirectory(dirHandle, parentId = null, path = '') {
+            const dirId = generateUUID();
+            const entry = createEntry(dirId, parentId, dirHandle.name, 0, 'directory');
+            ymap1.set(dirId, entry);
+
+            for await (const handle of dirHandle.values()) {
+              // const fullPath = path ? `${path}/${handle.name}` : handle.name;
+
+              if (handle.kind === 'file') {
+                const file = await handle.getFile();
+                const fileId = generateUUID();
+                const fileEntry = createEntry(fileId, dirId, handle.name, file.size, 'file');
+                ymap1.set(fileId, fileEntry);
+              } else if (handle.kind === 'directory') {
+                await processDirectory(handle, dirId);
+              }
+            }
+          }
+
+          await processDirectory(dirHandle, null);
+
+          console.log('ymap1 contents:', ymap1.size, generateJSONTree(ymap1));
+          const options = {};
+          const editor = new JSONEditor(container, options, generateJSONTree(ymap1));
+        } catch (err) {
+          console.error('Directory selection cancelled or error:', err);
+        }
+      };
+    </script>
+  </body>
+</html>
