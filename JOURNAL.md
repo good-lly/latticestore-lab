@@ -4,6 +4,8 @@
 
 #### Day 1 - 2025-08-28 - CRDT experiments
 
+- Woke up to a rejection from NLnet foundation. They don't think LatticeStore is worth funding. Pity.
+
 ### Problem
 
 - Explore merging strategies for CRDTs in collaborative applications.
@@ -19,9 +21,32 @@
 
 - `Yjs / Ycrdt` provides a good foundation for CRDT implementation with nice documentation and community support. Also found -> https://github.com/TimoWilhelm/yjs-cf-ws-provider which is very nice and simple <3 / lovely idea that worked with `week 1/crdt/index5.html` implementation.
 
-**TBD (tomorrow)**
+**Tomorrow**
 
 - check kotlin/java implementation of Ycrdt
 - meeting with the team to discuss encryption and data schema
 
-**score 7/10**
+#### Day 2 - 2025-08-29 - Are Android CRDTs a wasteland?
+
+### Problem
+
+- Every Yjs Android implementation is either dead (last commit: 2019) or dying.
+- Investigate WebSocket integration for real-time colab.
+- Encryption strategies and data structure.
+
+### What was evaluated
+
+- Went tru a bunch of outdated projects like https://github.com/y-crdt/ykt
+- Almost went nuclear and tried running JS directly in Android using JSEngine. Thank god I found the Kotlin implementation before that disaster and crossed fingers that it will work.
+
+**What worked:**
+
+- Found https://github.com/netless-io/yjs-android which is a more recent implementation but no recent updates or activity. Check out the `/experiments/week1/y-java` directory for more details. Code is in Kotlin. Got websockets talking. Data flies. Nothing merges yet.
+- Small win: Ondrej The Cryptographer (wizard) is sketching out our encryption approach for collaboration. Meeting next week.
+
+**Tomorrow**
+
+- Make CRDTs actually merge on Android (currently they just wave at each other)
+- Test what happens when you delete unsynced data in iCloud/Google Drive/Dropbox
+- Find someone who's built a distributed system and has experience with CRDTs.
+  **PS: If you know distributed systems and want to build something great, DM me.**
