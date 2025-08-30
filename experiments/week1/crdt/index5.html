@@ -15,6 +15,7 @@
       integrity="sha384-sRIl4kxILFvY47J16cr9ZwB07vP4J8+LH7qKQnuqkuIAvNWLzeN8tE5YBujZqJLB"
       crossorigin="anonymous"
     />
+    <link href="/node_modules/jsoneditor/dist/jsoneditor.css" rel="stylesheet" type="text/css" />
     <style>
       .connection-dot {
         display: inline-block;
@@ -138,11 +139,6 @@
     </div>
 
     <script type="module">
-      //   import * as Y from 'https://unpkg.com/yjs@13.6.10/dist/yjs.mjs';
-      //   import { WebsocketProvider } from 'https://unpkg.com/y-websocket@2.0.0/dist/y-websocket.mjs';
-      //   import { WebrtcProvider } from 'https://unpkg.com/y-webrtc@10.3.0/dist/y-webrtc.mjs';
-      //   import localforage from 'https://unpkg.com/localforage@1.10.0/dist/localforage.js';
-
       import * as Y from 'yjs';
       import { WebrtcProvider } from 'y-webrtc';
       import localforage from 'localforage';
@@ -153,6 +149,7 @@
       let provider = null;
       let debugLog = [];
       let connectionMode = 'websocket';
+      let jsonEditor = null;
 
       // Debug logging with types
       const addDebugLog = (message, type = 'info') => {
@@ -168,11 +165,8 @@
       // Update JSON display
       const updateDisplay = () => {
         const data = generateJSONTree(ymap);
-        const jsonContent = document.getElementById('jsonContent');
-        if (data.length > 0) {
-          jsonContent.textContent = JSON.stringify(data, null, 2);
-        } else {
-          jsonContent.textContent = 'No data yet. Pick files to start...';
+        if (jsonEditor) {
+          jsonEditor.update(data);
         }
         updateStats();
       };
@@ -272,6 +266,33 @@
         return roomKeyValue;
       };
 
+      const initializeEditor = () => {
+        const container = document.getElementById('jsonContent');
+        const options = {
+          mode: 'tree',
+          modes: ['tree'],
+          onChange: () => {
+            // Optional: You could sync manual edits back to Yjs here
+            // This works for all modes
+
+            try {
+              const json = jsonEditor.get();
+              console.log('JSON manually edited', json);
+            } catch (e) {
+              // Invalid JSON in code/text mode
+              console.log('Editor content changed');
+            }
+          },
+        };
+
+        if (jsonEditor) {
+          jsonEditor.destroy();
+        }
+
+        const data = generateJSONTree(ymap);
+        jsonEditor = new JSONEditor(container, options, data);
+      };
+
       // Create WebSocket Provider
       const createWebSocketProvider = roomId => {
         addDebugLog('Creating WebSocket provider...', 'info');
@@ -300,8 +321,12 @@
         wsProvider.on('synced', synced => {
           addDebugLog(`WebSocket synced: ${synced}`, synced ? 'success' : 'info');
           if (synced) {
-            updateDisplay();
             loadSnapshot(roomId);
+            if (jsonEditor) {
+              jsonEditor.update(generateJSONTree(ymap));
+            } else {
+              initializeEditor();
+            }
           }
         });
 
