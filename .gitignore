@@ -64,3 +64,4 @@ obj/
 .externalNativeBuild
 .cxx
 local.properties
+.dev.vars
