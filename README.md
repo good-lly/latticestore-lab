@@ -51,6 +51,6 @@ LatticeStore: Every device holds the keys. Syncs via E2EE Quantum-resistant (ML-
 - Real-time chat in [Signal group](https://signal.group/#CjQKIGEZsuMfgmJlrLYnywMAitQreSuX5NsSlqV1mXRTbCsAEhCrDGEk4Gr1XiEaU8S6F6Dz)
 - Star to watch the chaos unfold!
 
-Part of [thinking.tools](https://thinking.tools) - Open technology that runs anywhere, works for everyone.
+Part of [thinking.tools](https://thinking.tools) team project.
 
 MIT. Fork it. Break it. Have fun.

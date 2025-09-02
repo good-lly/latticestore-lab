@@ -1,0 +1,6 @@
+// Your Redis configuration
+REDIS_URL="http://localhost:6379"
+REDIS_TOKEN="randomlygeneratedaccesstoken"
+
+WRANGLER_SEND_METRICS=false
+UPSTASH_DISABLE_TELEMETRY=true

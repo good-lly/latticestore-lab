@@ -1,0 +1,41 @@
+{
+  "name": "project",
+  "version": "1.0.0",
+  "main": "index.js",
+  "scripts": {
+    "dev": "vite build --watch & wrangler dev",
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "keywords": [],
+  "type": "module",
+  "author": "",
+  "description": "",
+  "devDependencies": {
+    "@tailwindcss/vite": "^4.1.12",
+    "daisyui": "^5.1.4",
+    "hono": "^4.9.5",
+    "tailwindcss": "^4.1.12",
+    "vite": "^7.1.4",
+    "wrangler": "^4.33.1"
+  },
+  "prettier": {
+    "bracketSpacing": true,
+    "bracketSameLine": false,
+    "singleQuote": true,
+    "semi": true,
+    "endOfLine": "lf",
+    "tabWidth": 2,
+    "trailingComma": "all",
+    "arrowParens": "avoid",
+    "printWidth": 120
+  },
+  "dependencies": {
+    "@alpinejs/focus": "^3.14.9",
+    "@alpinejs/persist": "^3.14.9",
+    "@keyv/redis": "^5.1.1",
+    "alpinejs": "^3.14.9",
+    "keyv-upstash": "^1.0.8",
+    "localforage": "^1.10.0",
+    "yjs": "^13.6.27"
+  }
+}
