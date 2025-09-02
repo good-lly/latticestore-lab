@@ -1,8 +1,9 @@
 # Build Journal
 
-### Day 4 - 2025-09-02 - Real-time CRDT Implementation / FileBrowser in vanilla js
+### Day 4 - 2025-09-02 - Real-time CRDT Implementation / FileBrowser
 
-- in progress ...
+- Three days of CRDT libraries and I'm done. They're either dying, or documentation nightmares. I have to move on. Time to build on what actually works. Starting with the simplest possible stack: vanilla JS + AlpineJS for the UI. Simple vite middleware and hono, no 500MB node_modules. Plus just HTML that works.
+  Architecture: CloudFlare Workers + Redis + S3. Why? Because it runs everywhere, scales to zero, and costs nothing until it works. Got the skeleton running (`/project` - try it yourself). Tomorrow we make files actually sync. Don't forget to change .env vars!
 
 ### Day 3 - 2025-09-1 - Other CRDTs: Progress and Challenges
 
