@@ -264,6 +264,15 @@
         const options = {
           mode: 'tree',
           modes: ['tree', 'code'],
+          onEvent: (node, event) => {
+            if (event.type === 'focus' || event.type === 'blur') {
+              console.log('Event ' + event.type, {
+                field: node.field,
+                path: node.path,
+                value: node.value,
+              });
+            }
+          },
           onChange: () => {
             try {
               const json = jsonEditor.get();

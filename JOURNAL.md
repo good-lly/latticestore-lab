@@ -1,13 +1,29 @@
 # Build Journal
 
-### Day 3 - 2025-09-1 - Android CRDTs: Progress and Challenges
+### Day 4 - 2025-09-02 - Real-time CRDT Implementation / FileBrowser in vanilla js
+
+- in progress ...
+
+### Day 3 - 2025-09-1 - Other CRDTs: Progress and Challenges
 
 ### Problems / and solutions?
 
 - What happens when you delete unsynced data in iCloud/Google Drive/Dropbox?
+
   - Google Drive: does not have a specific feature to "handle collisions on deleted files" but rather manages file deletion by moving items to the Trash, where they remain for 30 days before permanent deletion. If a file is permanently deleted or removed from Trash, it is generally gone forever, though Workspace administrators may have a limited ability to restore it for a short window. A collision is a separate issue where duplicate files are created, often due to syncing problems, and typically requires manual reorganization to resolve.
   - Dropbox: When a file is deleted, it's moved to a temporary "deleted files" folder, giving you a grace period (30 days to over a year, depending on your plan) to recover it. Beyond this period, files are marked for permanent deletion. If you encounter an unexpected deletion, it's often due to a linked device or the file being moved outside the synced folder, and you should check your activity history.
   - yjs/ycrdt: if i edit deleted part of string on another device YJS will basically insert edit as a new string while removing the deleted part.
+
+### What was evaluated
+
+- Found some very interesting projects like https://www.secsync.com/ / https://github.com/nikgraf/secsync
+- Explored various CRDT implementations and their approaches to handling deleted data. Automerge / YJS
+- Analyzed the performance and usability of different CRDT libraries.
+- Conducted tests on how each library manages conflicts and data consistency.
+
+**Tomorrow**
+
+- Let's make some serious step forward and implement a basic CRDT for real-time syncing on the web at first.
 
 ### Day 2 - 2025-08-29 - Are Android CRDTs a wasteland?
 

@@ -4,7 +4,7 @@
   "main": "index.js",
   "scripts": {
     "dev": "vite",
-    "sync-service": "wrangler dev -c week1/sync-service/wrangler.toml",
+    "sync-service": "wrangler dev -c sync-service/wrangler.toml",
     "test": "echo \"Error: no test specified\" && exit 1"
   },
   "keywords": [],
