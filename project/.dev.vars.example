@@ -1,3 +1,9 @@
+// Get from your S3 provider - check https://github.com/good-lly/s3mini for compatibility
+S3_ACCESS_KEY_ID=your_access_key_id
+S3_SECRET_ACCESS_KEY=your_secret_access_key
+S3_ENDPOINT=https://your_s3_endpoint
+S3_REGION=auto
+
 // Your Redis configuration
 REDIS_URL="http://localhost:6379"
 REDIS_TOKEN="randomlygeneratedaccesstoken"
