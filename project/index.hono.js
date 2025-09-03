@@ -5,6 +5,9 @@ import { html, raw } from 'hono/html';
 import { serveStatic } from 'hono/cloudflare-workers';
 
 import { api } from './src_server/hono.api.js';
+const SVG = `<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'>
+    <rect width='32' height='32' fill='#FF0000'/>
+  </svg>`;
 
 const app = new Hono({ strict: false });
 
@@ -17,6 +20,11 @@ app.use(
 );
 app.use('*', logger());
 app.use('/public/*', serveStatic({ root: './docs/public/' }));
+app.get('/favicon.ico', c => {
+  return c.body(SVG, 200, {
+    'Content-Type': 'image/svg+xml',
+  });
+});
 
 app.route('api/', api);
 

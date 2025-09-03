@@ -2,7 +2,7 @@
 
 ## What is this?
 
-Daily build journal of LatticeStore - local-first, quantum-safe, E2EE SDK/platform that nobody owns but you. No masters.
+Daily build journal of LatticeStore - local-first, PQ-E2EE SDK/platform that nobody owns but you. No masters!
 
 **Status**: 🔥 Everything is on fire (in a good way)
 

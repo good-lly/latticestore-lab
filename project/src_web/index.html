@@ -12,7 +12,16 @@
       import Alpine from 'alpinejs';
       import persist from '@alpinejs/persist';
       import focus from '@alpinejs/focus';
+      import { sha256 } from './crypto.js';
       import { getDeviceNameHelper, openMultiFilePicker } from './helpers.js';
+      import { userLogin, userRegister, userLogout } from './user.js';
+
+      const API_ENDPOINT = ['http://localhost:8787/api'];
+      const MAX_RETRIES = 3;
+
+      const workerCount = navigator.hardwareConcurrency > 2 ? 2 : 1 || 1;
+      const workers = Array.from({ length: workerCount }, () => new Worker('public/worker.js'));
+      const chunkSize = 8 * 1024 * 1024;
 
       const draggingSomething = event => {
         console.log('Dragging something:', event);
@@ -22,11 +31,14 @@
       Alpine.plugin(focus);
       Alpine.store('account', {
         username: Alpine.$persist('').as('username'),
+        sha256email: Alpine.$persist('').as('sha256email'),
         devicename: Alpine.$persist(getDeviceNameHelper()).as('devicename'),
-        loggedIn: Alpine.$persist(false).as('loggedIn'),
+        isLoggedIn: Alpine.$persist(false).as('isLoggedIn'),
         draggingListener: false,
         dragActive: false,
+        emailNotifications: true,
         cwd: null,
+        cwdId: null,
         init() {
           if (this.loggedIn && this.username) {
             console.log('User is logged in as', this.username, 'on device:', this.devicename);
@@ -34,19 +46,41 @@
             // check if dragging listeners exists
             if (!this.draggingListener) {
               this.draggingListener = true;
-              window.addEventListener('dragstart', draggingSomething, false);
+              document.addEventListener('dragstart', draggingSomething, false);
             }
           }
         },
-        createNew(newUsername) {
-          this.username = newUsername.trim();
-          this.loggedIn = true;
+        async createNew(newUsername) {
+          console.log('Creating new user:', newUsername);
+          const username = newUsername.trim();
+          const sha256email = await sha256(username, 'hex');
+          const registerResp = await userRegister(sha256email, this.devicename, username, API_ENDPOINT);
+          if (registerResp.ok) {
+            await this.login(username);
+          } else {
+            alert(registerResp.message);
+          }
         },
-        logout() {
+        async login(username) {
+          console.log('Logging in user:', username);
+          this.username = username.trim();
+          this.sha256email = await sha256(this.username, 'hex');
+          const loginResp = await userLogin(this.sha256email, this.devicename, this.username, API_ENDPOINT);
+          console.log('login response is: ', loginResp);
+          if (loginResp.ok) {
+            this.isLoggedIn = true;
+          } else {
+            this.isLoggedIn = false;
+            alert(loginResp.message);
+          }
+        },
+        async logout() {
           this.username = '';
-          this.loggedIn = false;
+          await userLogout(this.sha256email, API_ENDPOINT);
+          this.sha256email = '';
+          this.isLoggedIn = false;
           if (this.draggingListener) {
-            window.removeEventListener('dragstart', draggingSomething, false);
+            document.removeEventListener('dragstart', draggingSomething, false);
             this.draggingListener = false;
           }
         },
@@ -117,24 +151,73 @@
         x-init="console.log($store.account.username)"
         id="my_modal_1"
         class="modal"
-        :class="{ 'modal-open': $store.account.username.length == 0 }"
+        :class="{ 'modal-open': !$store.account.isLoggedIn }"
       >
         <div class="modal-box">
-          <h3 class="text-lg font-bold">Time to login!</h3>
-          <p class="py-4">Select your username</p>
+          <div role="alert" class="alert alert-warning mb-6">
+            <svg
+              xmlns="http://www.w3.org/2000/svg"
+              class="h-6 w-6 shrink-0 stroke-current"
+              fill="none"
+              viewBox="0 0 24 24"
+            >
+              <path
+                stroke-linecap="round"
+                stroke-linejoin="round"
+                stroke-width="2"
+                d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z"
+              />
+            </svg>
+            <span>Warning: This is DEMO ONLY - do not use for production!</span>
+          </div>
+          <h3 class="text-lg font-bold">Let's get in!</h3>
+          <!-- <p class="py-4">Document bitte</p> -->
           <div class="w-full">
-            <form method="dialog" x-data="{ newUsername: '' }">
+            <form method="dialog" x-data="{ newUsername: '' }" x-on:submit="event.preventDefault();">
               <fieldset class="fieldset w-full">
-                <legend class="fieldset-legend w-full">What is your name?</legend>
-                <input type="text" class="input w-full" placeholder="Your username" x-model="newUsername" />
+                <legend class="fieldset-legend w-full">Fill in your email</legend>
+                <input type="email" class="input w-full" placeholder="eg. tim@apple.com" x-model="newUsername" />
+                <!-- <label class="label">
+                  <input type="checkbox" checked="checked" class="checkbox" />
+                  Your email will only be used to notify you of important service changes. We do not share or sell your
+                  data. Unsubscribe anytime.
+                </label> -->
+                <div class="flex items-start pt-4">
+                  <input
+                    type="checkbox"
+                    checked="checked"
+                    class="checkbox"
+                    :checked="$store.account.emailNotifications"
+                  />
+                  <span
+                    class="text-sm px-3"
+                    @click="$store.account.emailNotifications = !$store.account.emailNotifications"
+                  >
+                    Your email will only be used to notify you of important service changes. We keep it very safe.
+                    Unsubscribe anytime.
+                  </span>
+                </div>
               </fieldset>
-              <button class="btn mt-5" @click="$store.account.createNew(newUsername.trim())">Login</button>
+              <button
+                class="btn mt-5"
+                @click="await $store.account.login(newUsername.trim())"
+                :disabled="newUsername.trim().length === 0 || !$store.account.emailNotifications"
+              >
+                Login
+              </button>
+              <button
+                class="btn mt-5"
+                @click="await $store.account.createNew(newUsername.trim())"
+                :disabled="newUsername.trim().length === 0 || !$store.account.emailNotifications"
+              >
+                Registration
+              </button>
             </form>
           </div>
         </div>
       </dialog>
 
-      <div x-show="$store.account.username.length > 0" class="drawer mx-auto max-w-[100rem] md:drawer-open bg-base-300">
+      <div x-show="$store.account.isLoggedIn" class="drawer mx-auto max-w-[100rem] md:drawer-open bg-base-300">
         <input id="my-drawer" type="checkbox" class="drawer-toggle" />
         <div
           class="drawer-content bg-base-300"
@@ -143,10 +226,26 @@
 	          dragActive: $store.account.dragActive,
 	        }"
         >
+          <div role="alert" class="alert alert-warning">
+            <svg
+              xmlns="http://www.w3.org/2000/svg"
+              class="h-6 w-6 shrink-0 stroke-current"
+              fill="none"
+              viewBox="0 0 24 24"
+            >
+              <path
+                stroke-linecap="round"
+                stroke-linejoin="round"
+                stroke-width="2"
+                d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z"
+              />
+            </svg>
+            <span>Warning: This is DEMO ONLY - do not use for production!</span>
+          </div>
           <header class="navbar transparent sticky top-0 z-30 flex h-16 w-full duration-100">
             <div class="flex-1">
               <ul class="menu menu-horizontal p-0 w-full">
-                <label for="my-drawer" class="btn btn-primary drawer-button md:hidden">
+                <!-- <label for="my-drawer" class="btn btn-primary drawer-button md:hidden">
                   <svg
                     xmlns="http://www.w3.org/2000/svg"
                     fill="none"
@@ -160,9 +259,9 @@
                       d="M4 6h16M4 12h16M4 18h16"
                     ></path>
                   </svg>
-                </label>
-                <li>
-                  <label class="input input-ghost w-full max-w-xs">
+                </label> -->
+                <li class="w-full">
+                  <label class="input input-ghost w-full">
                     <svg class="h-[1em] opacity-50" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24">
                       <g
                         stroke-linejoin="round"
@@ -181,6 +280,7 @@
                       autocomplete="off"
                       spellcheck="false"
                       aria-autocomplete="list"
+                      class="w-full"
                     />
                   </label>
                 </li>
@@ -192,19 +292,19 @@
                   <div class="w-10 rounded-full">
                     <img
                       alt="Profile Picture"
-                      src="https://img.daisyui.com/images/stock/photo-1534528741775-53994a69daeb.webp"
+                      src="https://gravatar.com/avatar/{{ $store.account.sha256email }}?s=200&d=retro"
                     />
                   </div>
                 </div>
                 <ul tabindex="0" class="menu menu-sm dropdown-content bg-base-100 rounded-box z-1 mt-3 w-52 p-2 shadow">
                   <li>
-                    <a class="justify-between">
+                    <a class="nowrap">
                       Account (<span class="inline" x-text="$store.account.username.trim()"></span>)
                       <!-- <span class="badge">New</span> -->
                     </a>
                   </li>
                   <!-- <li><a>Settings</a></li> -->
-                  <li><a @click="$store.account.logout()">Logout</a></li>
+                  <li><a @click="await $store.account.logout()">Logout</a></li>
                 </ul>
               </div>
             </div>
