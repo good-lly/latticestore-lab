@@ -44,3 +44,8 @@
 [x-cloak] {
   display: none !important;
 }
+
+dialog {
+  background-image: url('/public/give_up.png');
+  background-size: cover;
+}

@@ -1,6 +1,6 @@
-const CONCURRENT_UPLOADS_PER_WORKER = 6;
+const CONCURRENT_UPLOADS_PER_WORKER = 3;
 const MAX_RETRIES = 3;
-const RETRY_DELAYS = [1000, 2000, 4000];
+const RETRY_DELAYS = [500, 1200, 3000];
 let cryptoKey;
 self.onmessage = async e => {
   const { file, authToken, cKey, endpoint, chunkSize, startChunk, endChunk, totalChunks } = e.data;

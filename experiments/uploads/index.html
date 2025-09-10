@@ -1,0 +1,540 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Secure File Uploader</title>
+    <style>
+      * {
+        margin: 0;
+        padding: 0;
+        box-sizing: border-box;
+      }
+
+      body {
+        font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, sans-serif;
+        background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+        min-height: 100vh;
+        padding: 20px;
+      }
+
+      .container {
+        max-width: 800px;
+        margin: 0 auto;
+        background: white;
+        border-radius: 20px;
+        padding: 30px;
+        box-shadow: 0 20px 60px rgba(0, 0, 0, 0.3);
+      }
+
+      h1 {
+        color: #333;
+        margin-bottom: 30px;
+        text-align: center;
+        font-size: 2em;
+      }
+
+      .form-group {
+        margin-bottom: 20px;
+      }
+
+      label {
+        display: block;
+        margin-bottom: 8px;
+        color: #555;
+        font-weight: 600;
+        font-size: 14px;
+        text-transform: uppercase;
+        letter-spacing: 0.5px;
+      }
+
+      input[type='text'],
+      input[type='password'],
+      input[type='url'],
+      input[type='number'] {
+        width: 100%;
+        padding: 12px 15px;
+        border: 2px solid #e0e0e0;
+        border-radius: 8px;
+        font-size: 16px;
+        transition: all 0.3s;
+      }
+
+      input[type='text']:focus,
+      input[type='password']:focus,
+      input[type='url']:focus,
+      input[type='number']:focus {
+        outline: none;
+        border-color: #667eea;
+        box-shadow: 0 0 0 3px rgba(102, 126, 234, 0.1);
+      }
+
+      .file-input-wrapper {
+        position: relative;
+        overflow: hidden;
+        display: inline-block;
+        width: 100%;
+      }
+
+      .file-input-wrapper input[type='file'] {
+        position: absolute;
+        left: -9999px;
+      }
+
+      .file-input-label {
+        display: block;
+        padding: 12px 15px;
+        background: #f5f5f5;
+        border: 2px dashed #ddd;
+        border-radius: 8px;
+        text-align: center;
+        cursor: pointer;
+        transition: all 0.3s;
+      }
+
+      .file-input-label:hover {
+        background: #f0f0f0;
+        border-color: #667eea;
+      }
+
+      .file-list {
+        margin-top: 10px;
+        padding: 10px;
+        background: #f9f9f9;
+        border-radius: 8px;
+        max-height: 150px;
+        overflow-y: auto;
+      }
+
+      .file-item {
+        padding: 5px 10px;
+        background: white;
+        margin-bottom: 5px;
+        border-radius: 4px;
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+      }
+
+      .file-size {
+        color: #888;
+        font-size: 12px;
+      }
+
+      .btn {
+        background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+        color: white;
+        border: none;
+        padding: 12px 30px;
+        border-radius: 8px;
+        font-size: 16px;
+        font-weight: 600;
+        cursor: pointer;
+        transition: all 0.3s;
+        width: 100%;
+        margin-top: 10px;
+      }
+
+      .btn:hover:not(:disabled) {
+        transform: translateY(-2px);
+        box-shadow: 0 10px 20px rgba(0, 0, 0, 0.2);
+      }
+
+      .btn:disabled {
+        opacity: 0.6;
+        cursor: not-allowed;
+      }
+
+      .progress-container {
+        margin-top: 30px;
+        display: none;
+      }
+
+      .progress-item {
+        margin-bottom: 15px;
+        padding: 15px;
+        background: #f9f9f9;
+        border-radius: 8px;
+      }
+
+      .progress-header {
+        display: flex;
+        justify-content: space-between;
+        margin-bottom: 10px;
+      }
+
+      .progress-bar {
+        width: 100%;
+        height: 8px;
+        background: #e0e0e0;
+        border-radius: 4px;
+        overflow: hidden;
+      }
+
+      .progress-fill {
+        height: 100%;
+        background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+        border-radius: 4px;
+        transition: width 0.3s;
+      }
+
+      .status {
+        display: inline-block;
+        padding: 3px 8px;
+        border-radius: 4px;
+        font-size: 12px;
+        font-weight: 600;
+        text-transform: uppercase;
+      }
+
+      .status.uploading {
+        background: #fff3cd;
+        color: #856404;
+      }
+
+      .status.completed {
+        background: #d4edda;
+        color: #155724;
+      }
+
+      .status.failed {
+        background: #f8d7da;
+        color: #721c24;
+      }
+
+      .results {
+        margin-top: 20px;
+        padding: 20px;
+        background: #e8f5e9;
+        border-radius: 8px;
+        display: none;
+      }
+
+      .results h3 {
+        color: #2e7d32;
+        margin-bottom: 10px;
+      }
+
+      .result-item {
+        padding: 10px;
+        background: white;
+        margin-bottom: 10px;
+        border-radius: 4px;
+        font-family: monospace;
+        font-size: 14px;
+      }
+
+      .error {
+        margin-top: 20px;
+        padding: 15px;
+        background: #f8d7da;
+        color: #721c24;
+        border-radius: 8px;
+        display: none;
+      }
+
+      .config-toggle {
+        margin-bottom: 20px;
+        display: flex;
+        align-items: center;
+        gap: 10px;
+      }
+
+      .config-toggle input[type='checkbox'] {
+        width: 20px;
+        height: 20px;
+      }
+    </style>
+  </head>
+  <body>
+    <div class="container">
+      <h1>🔐 Secure File Uploader</h1>
+
+      <form id="uploadForm">
+        <div class="form-group">
+          <label for="endpoint">Upload Endpoint</label>
+          <input
+            type="url"
+            id="endpoint"
+            placeholder="https://api.example.com/upload"
+            value="https://api.example.com/upload"
+            required
+          />
+        </div>
+
+        <div class="form-group">
+          <label for="authToken">Access Token</label>
+          <input type="password" id="authToken" placeholder="Bearer token" required />
+        </div>
+
+        <div class="form-group">
+          <label for="userId">User ID</label>
+          <input type="text" id="userId" placeholder="user-123" value="user-123" required />
+        </div>
+
+        <div class="form-group">
+          <label for="encryptionKey">Encryption Key (Optional)</label>
+          <input type="password" id="encryptionKey" placeholder="Leave empty to skip encryption" />
+        </div>
+
+        <div class="config-toggle">
+          <input type="checkbox" id="enableChunking" />
+          <label for="enableChunking">Enable chunking for large files</label>
+        </div>
+
+        <div class="form-group" id="chunkSizeGroup" style="display: none">
+          <label for="chunkSize">Chunk Size (MB)</label>
+          <input type="number" id="chunkSize" min="1" max="100" value="5" />
+        </div>
+
+        <div class="form-group">
+          <label for="files">Select Files</label>
+          <div class="file-input-wrapper">
+            <input type="file" id="files" multiple required />
+            <label for="files" class="file-input-label"> 📁 Click to select files or drag and drop </label>
+          </div>
+          <div id="fileList" class="file-list" style="display: none"></div>
+        </div>
+
+        <button type="submit" class="btn" id="uploadBtn">Upload Files</button>
+      </form>
+
+      <div id="progressContainer" class="progress-container"></div>
+      <div id="results" class="results"></div>
+      <div id="error" class="error"></div>
+    </div>
+
+    <script>
+      const worker = new Worker('this_worker.js');
+
+      // File management
+      const fileInput = document.getElementById('files');
+      const fileList = document.getElementById('fileList');
+      const uploadForm = document.getElementById('uploadForm');
+      const uploadBtn = document.getElementById('uploadBtn');
+      const progressContainer = document.getElementById('progressContainer');
+      const resultsDiv = document.getElementById('results');
+      const errorDiv = document.getElementById('error');
+      const enableChunking = document.getElementById('enableChunking');
+      const chunkSizeGroup = document.getElementById('chunkSizeGroup');
+
+      let selectedFiles = [];
+      let uploadResults = [];
+
+      // Toggle chunk size input
+      enableChunking.addEventListener('change', e => {
+        chunkSizeGroup.style.display = e.target.checked ? 'block' : 'none';
+      });
+
+      // Handle file selection
+      fileInput.addEventListener('change', e => {
+        selectedFiles = Array.from(e.target.files);
+        displayFiles();
+      });
+
+      // Display selected files
+      function displayFiles() {
+        if (selectedFiles.length === 0) {
+          fileList.style.display = 'none';
+          return;
+        }
+
+        fileList.style.display = 'block';
+        fileList.innerHTML = selectedFiles
+          .map(
+            file => `
+                <div class="file-item">
+                    <span>${file.name}</span>
+                    <span class="file-size">${formatFileSize(file.size)}</span>
+                </div>
+            `,
+          )
+          .join('');
+      }
+
+      // Format file size
+      function formatFileSize(bytes) {
+        if (bytes === 0) return '0 Bytes';
+        const k = 1024;
+        const sizes = ['Bytes', 'KB', 'MB', 'GB'];
+        const i = Math.floor(Math.log(bytes) / Math.log(k));
+        return Math.round((bytes / Math.pow(k, i)) * 100) / 100 + ' ' + sizes[i];
+      }
+
+      // Promise wrapper for worker messages
+      function sendWorkerMessage(message) {
+        return new Promise((resolve, reject) => {
+          const messageHandler = e => {
+            if (e.data.type === 'complete') {
+              worker.removeEventListener('message', messageHandler);
+              if (e.data.success) {
+                resolve(e.data.data);
+              } else {
+                reject(new Error(e.data.error));
+              }
+            } else if (e.data.type === 'error') {
+              worker.removeEventListener('message', messageHandler);
+              reject(new Error(e.data.error));
+            } else if (e.data.type === 'progress') {
+              // Update progress UI
+              updateProgress(message.file.name, e.data);
+            }
+          };
+
+          worker.addEventListener('message', messageHandler);
+          worker.postMessage(message);
+        });
+      }
+
+      // Update progress display
+      function updateProgress(fileName, progressData) {
+        const progressId = `progress-${fileName.replace(/[^a-z0-9]/gi, '_')}`;
+        let progressItem = document.getElementById(progressId);
+
+        if (!progressItem) {
+          progressItem = document.createElement('div');
+          progressItem.id = progressId;
+          progressItem.className = 'progress-item';
+          progressContainer.appendChild(progressItem);
+        }
+
+        const percent = ((progressData.chunkIndex + 1) / progressData.totalChunks) * 100;
+
+        progressItem.innerHTML = `
+                <div class="progress-header">
+                    <span>${fileName}</span>
+                    <span class="status ${progressData.status}">${progressData.status}</span>
+                </div>
+                <div class="progress-bar">
+                    <div class="progress-fill" style="width: ${percent}%"></div>
+                </div>
+                <small>Chunk ${progressData.chunkIndex + 1} of ${progressData.totalChunks}</small>
+            `;
+      }
+
+      // Handle form submission
+      uploadForm.addEventListener('submit', async e => {
+        e.preventDefault();
+
+        if (selectedFiles.length === 0) {
+          showError('Please select at least one file');
+          return;
+        }
+
+        // Get form values
+        const endpoint = document.getElementById('endpoint').value;
+        const authToken = document.getElementById('authToken').value;
+        const userId = document.getElementById('userId').value;
+        const encryptionKey = document.getElementById('encryptionKey').value;
+        const useChunking = document.getElementById('enableChunking').checked;
+        const chunkSize = useChunking ? parseInt(document.getElementById('chunkSize').value) * 1024 * 1024 : null;
+
+        // Reset UI
+        errorDiv.style.display = 'none';
+        resultsDiv.style.display = 'none';
+        progressContainer.style.display = 'block';
+        progressContainer.innerHTML = '';
+        uploadBtn.disabled = true;
+        uploadResults = [];
+
+        try {
+          // Upload each file
+          const uploadPromises = selectedFiles.map(async file => {
+            const fileAliasId = crypto.randomUUID(); // Generate a unique ID for the file
+            try {
+              const result = await sendWorkerMessage({
+                action: 'upload',
+                fileId: fileAliasId,
+                file,
+                endpoint,
+                authToken,
+                userId,
+                encryptionKey: encryptionKey || null,
+                chunkSize,
+              });
+
+              return {
+                success: true,
+                fileId: fileAliasId,
+                fileName: file.name,
+                result,
+              };
+            } catch (error) {
+              return {
+                success: false,
+                fileId: fileAliasId,
+                fileName: file.name,
+                error: error.message,
+              };
+            }
+          });
+
+          // Wait for all uploads
+          uploadResults = await Promise.all(uploadPromises);
+
+          // Display results
+          displayResults();
+        } catch (error) {
+          showError(`Upload failed: ${error.message}`);
+        } finally {
+          uploadBtn.disabled = false;
+        }
+      });
+
+      // Display upload results
+      function displayResults() {
+        const successful = uploadResults.filter(r => r.success);
+        const failed = uploadResults.filter(r => !r.success);
+
+        if (successful.length === 0 && failed.length === 0) {
+          return;
+        }
+
+        resultsDiv.style.display = 'block';
+        resultsDiv.innerHTML = `
+                <h3>Upload Results</h3>
+                ${
+                  successful.length > 0
+                    ? `
+                    <h4>✅ Successfully uploaded (${successful.length})</h4>
+                    ${successful
+                      .map(
+                        r => `
+                        <div class="result-item">
+                            <strong>${r.fileName}</strong><br>
+                            ETag: ${Array.isArray(r.result.etag) ? r.result.etag.join(', ') : r.result.etag}
+                        </div>
+                    `,
+                      )
+                      .join('')}
+                `
+                    : ''
+                }
+                ${
+                  failed.length > 0
+                    ? `
+                    <h4>❌ Failed uploads (${failed.length})</h4>
+                    ${failed
+                      .map(
+                        r => `
+                        <div class="result-item" style="background: #f8d7da;">
+                            <strong>${r.fileName}</strong><br>
+                            Error: ${r.error}
+                        </div>
+                    `,
+                      )
+                      .join('')}
+                `
+                    : ''
+                }
+            `;
+      }
+
+      // Show error message
+      function showError(message) {
+        errorDiv.style.display = 'block';
+        errorDiv.textContent = message;
+      }
+    </script>
+  </body>
+</html>

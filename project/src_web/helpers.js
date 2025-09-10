@@ -166,3 +166,35 @@ export const openMultiFilePicker = callback => {
   document.body.appendChild(input);
   input.click();
 };
+
+export const generateJSONTree = ymap => {
+  const nodes = {};
+  ymap.forEach((value, key) => {
+    nodes[key] = { ...value, children: [] };
+  });
+
+  const roots = [];
+
+  Object.values(nodes).forEach(node => {
+    if (node.parentId && nodes[node.parentId]) {
+      nodes[node.parentId].children.push(node);
+    } else {
+      roots.push(node);
+    }
+  });
+
+  function cleanNode(node) {
+    const { objectId, parentId, children, ...rest } = node;
+    const cleaned = {
+      _id: objectId,
+      ...rest,
+    };
+
+    if (node.type === 'directory' && children.length > 0) {
+      cleaned.children = node.children.map(cleanNode);
+    }
+    return cleaned;
+  }
+
+  return roots.map(cleanNode);
+};
