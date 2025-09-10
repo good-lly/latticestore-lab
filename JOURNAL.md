@@ -1,5 +1,15 @@
 # Build Journal
 
+### Day 5 & Day 6 - 2025-09-10 - FileBrowsing / upload / download / dummy user registration / etc / everything is in WIP
+
+After a short break in Ireland, grinding the basics again. File browser UI - half done. Upload/download with WebWorkers - works on my machine™. Dummy auth - exists. The real story: I'm sitting here implementing file uploads and realizing Yjs might be complete overkill for this.
+CRDTs are for Google Docs-style collaboration - character by character, real-time cursors. But we're building file sync. Nobody edits the same photo simultaneously in iCloud. They upload, download, maybe conflict once a month? I'm building a Ferrari engine for a pickup truck.
+Still coding (nothing's finished yet), but questioning everything. Do we need:
+Full CRDT merging? Or just last-write-wins + version history?
+Yjs's 100KB? Or 10 lines of timestamp/inner logic-counter comparison?
+Complex conflict resolution? Or just "here's both versions, you pick"?
+Tomorrow I either commit to CRDTs or rip them out entirely. But first, need to get this demo working enough to show someone that it's not completely broken. Check `/project` if you want to see the mess in progress.
+
 ### Day 4 - 2025-09-02 - Real-time CRDT Implementation / FileBrowser
 
 - Three days of CRDT libraries and I'm done. They're either dying, or documentation nightmares. I have to move on. Time to build on what actually works. Starting with the simplest possible stack: vanilla JS + AlpineJS for the UI. Simple vite middleware and hono, no 500MB node_modules. Plus just HTML that works.
