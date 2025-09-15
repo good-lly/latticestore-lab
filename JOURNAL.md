@@ -1,6 +1,6 @@
 # Build Journal
 
-### Day 7 - 2025-09-11 - Parallel uploads, S3 backend, and SSE magic
+### Day 7 - 2025-09-15 - Parallel uploads, S3 backend, and SSE magic
 
 System generates encryption keys now automatically per-file, now - 32 bytes of randomness, done.
 Big architectural shift today: Redis is just metadata now. Actual files go to S3 (via s3mini library). Why? Redis wasn't built to store 100MB videos. S3 was. Simple.
