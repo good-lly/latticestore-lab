@@ -12,16 +12,16 @@
       import Alpine from 'alpinejs';
       import persist from '@alpinejs/persist';
       import focus from '@alpinejs/focus';
-      import { sha256 } from './crypto.js';
-      import { getDeviceNameHelper, openMultiFilePicker, generateJSONTree } from './helpers.js';
-      import { userLogin, userRegister, userLogout } from './user.js';
-
-      const API_ENDPOINT = ['http://localhost:8787/api'];
-      const MAX_RETRIES = 3;
-
-      const workerCount = navigator.hardwareConcurrency > 2 ? 2 : 1 || 1;
-      const workers = Array.from({ length: workerCount }, () => new Worker('public/worker.js'));
-      const CHUNK_SIZE = 8 * 1024 * 1024; // 8MB chunks
+      import LatStore from './latstore.js';
+      import {
+        getDeviceNameHelper,
+        openMultiFilePicker,
+        generateJSONTree,
+        uploadWithSharedQueue,
+        processBatch,
+      } from './helpers.js';
+      const password = 'password'; // In real app, use proper auth
+      const API_ENDPOINT = 'http://localhost:8787/api';
 
       const draggingSomething = event => {
         console.log('Dragging something:', event);
@@ -31,7 +31,7 @@
       Alpine.plugin(focus);
       Alpine.store('account', {
         username: Alpine.$persist('').as('username'),
-        sha256email: Alpine.$persist('').as('sha256email'),
+        userId: Alpine.$persist('').as('userId'),
         devicename: Alpine.$persist(getDeviceNameHelper()).as('devicename'),
         authToken: Alpine.$persist('').as('authToken'),
         isLoggedIn: Alpine.$persist(false).as('isLoggedIn'),
@@ -46,63 +46,50 @@
         uploadingFiles: [],
         uploadValue: 0,
         cwdFullPath: '/',
+        latStore: new LatStore(),
         async init() {
           if (this.isLoggedIn && this.username && this.devicename) {
             console.log('User is logged in as', this.username, 'on device:', this.devicename);
-            this.sha256email = await sha256(this.username, 'hex');
-            const loginResp = await userLogin(this.sha256email, this.devicename, this.username, API_ENDPOINT);
-            if (loginResp.ok) {
+            const loggedIn = await this.latStore.login(this.username, this.devicename, 'password', API_ENDPOINT);
+            if (loggedIn) {
               this.isLoggedIn = true;
-              this.authToken = loginResp.token;
+              this.authToken = this.latStore.authToken;
               this.cwd = '/';
             } else {
-              await this.logout();
-              alert(loginResp.message);
+              await this.latStore.logout();
+              this.isLoggedIn = false;
+              this.username = '';
+              this.authToken = '';
+              this.userId = '';
             }
-            // check if dragging listeners exists
-            // if (!this.draggingListener) {
-            //   this.draggingListener = true;
-            //   document.addEventListener('dragstart', draggingSomething, false);
-            // }
           }
         },
-        async createNew(newUsername) {
+        async register(newUsername) {
           console.log('Creating new user:', newUsername);
-          const username = newUsername.trim();
-          const sha256email = await sha256(username, 'hex');
-          const initJSONData = generateJSONTree(this.localData);
-          console.log('Initial JSON data to register is: ', initJSONData);
-          const registerResp = await userRegister(sha256email, this.devicename, username, API_ENDPOINT, initJSONData);
+          const registerResp = await this.latStore.register(newUsername, this.devicename, password, API_ENDPOINT);
           if (registerResp.ok) {
-            await this.login(username);
+            await this.login(newUsername);
           } else {
             alert(registerResp.message);
           }
         },
         async login(username) {
           console.log('Logging in user:', username);
-          this.username = username.trim();
-          this.sha256email = await sha256(this.username, 'hex');
-          const loginResp = await userLogin(this.sha256email, this.devicename, this.username, API_ENDPOINT);
-          console.log('login response is: ', loginResp);
-          if (loginResp.ok) {
+          const loggedIn = await this.latStore.login(username, this.devicename, password, API_ENDPOINT);
+          if (loggedIn) {
+            this.username = username;
             this.isLoggedIn = true;
-            this.authToken = loginResp.token;
+            this.authToken = this.latStore.authToken;
           } else {
             this.isLoggedIn = false;
-            alert(loginResp.message);
           }
+          return this.isLoggedIn;
         },
         async logout() {
           this.username = '';
-          await userLogout(this.sha256email, API_ENDPOINT);
-          this.sha256email = '';
+          await this.latStore.logout();
           this.authToken = '';
           this.isLoggedIn = false;
-          // if (this.draggingListener) {
-          //   document.removeEventListener('dragstart', draggingSomething, false);
-          //   this.draggingListener = false;
-          // }
         },
         addNewDir() {
           const dirName = prompt('Enter new directory name:');
@@ -149,34 +136,50 @@
             // --- Fallback: Multi-file picker ---
             openMultiFilePicker(async filesList => {
               try {
-                console.warn('2. files are: ', filesList);
-                const files = [...filesList];
-                const filesCount = files.length;
-                if (filesCount > 0) {
-                  const totalFilesSize = files.reduce((acc, file) => acc + file.size, 0);
-                  console.log(`Selected ${filesCount} files, total size: ${totalFilesSize} bytes`);
-                  this.uploadingFiles = files.map(file => ({ name: file.name, size: file.size }));
-                  this.uploadValue = 0;
+                // const filesCount = selectedFiles.length;
+                uploadResults = [];
+                try {
+                  // Upload each file
+                  const uploadPromise = await uploadWithSharedQueue(filesList, workers, {
+                    endpoint: API_ENDPOINT + '/upload',
+                    authToken: this.authToken,
+                    userId: this.userId,
+                    chunkSize: CHUNK_SIZE,
+                  });
+                  // Wait for all uploads
+                  uploadResults = uploadPromise;
+
+                  // Display results
+                  console.log('Upload Results:', uploadResults);
+
+                  const successful = [];
+                  const failed = [];
+
+                  // Process results from each file
+                  for (const [fileId, fileData] of Object.entries(uploadResults)) {
+                    if (fileData.errors && fileData.errors.length > 0) {
+                      failed.push({
+                        fileName: fileData.fileName,
+                        errors: fileData.errors,
+                      });
+                    } else {
+                      successful.push({
+                        fileName: fileData.fileName,
+                        fileId: fileId,
+                        chunks: fileData.chunks,
+                        totalChunks: fileData.totalChunks,
+                      });
+                    }
+                  }
+
+                  if (successful.length === 0 && failed.length === 0) {
+                    return;
+                  }
+                } catch (error) {
+                  console.error(`Upload failed: ${error.message}`);
+                } finally {
+                  console.log('Upload process completed.');
                 }
-                const API_UPLOAD_ENDPOINT = API_ENDPOINT[0] + '/upload';
-                const keyData = crypto.getRandomValues(new Uint8Array(32));
-                const cryptoKey = await crypto.subtle.importKey('raw', keyData, { name: 'AES-GCM' }, true, ['encrypt']);
-
-                // Export key for workers
-                const exportedKey = await crypto.subtle.exportKey('raw', cryptoKey);
-
-                // THIS IS USELESS NOW ...
-                // const rootId = generateUUID();
-                // const rootEntry = createEntry(rootId, null, 'Selected Files', 0, 'directory');
-                // ymap1.set(rootId, rootEntry);
-
-                // for (let file of files) {
-                //   const fileId = generateUUID();
-                //   const fileEntry = createEntry(fileId, rootId, file.name, file.size, 'file');
-                //   ymap1.set(fileId, fileEntry);
-                // }
-
-                // console.log('Files loaded (multi-file mode):', ymap1.size, generateJSONTree(ymap1));
               } catch (err) {
                 console.error('Multi-file selection error:', err);
               }
@@ -249,7 +252,7 @@
               </button>
               <button
                 class="btn mt-5"
-                @click="await $store.account.createNew(newUsername.trim())"
+                @click="await $store.account.register(newUsername.trim())"
                 :disabled="newUsername.trim().length === 0 || !$store.account.emailNotifications"
               >
                 Registration
@@ -334,7 +337,7 @@
                   <div class="w-10 rounded-full">
                     <img
                       alt="Profile Picture"
-                      src="https://gravatar.com/avatar/{{ $store.account.sha256email }}?s=200&d=retro"
+                      src="https://gravatar.com/avatar/{{ $store.account.userId }}?s=200&d=retro"
                     />
                   </div>
                 </div>
@@ -370,7 +373,7 @@
                         d="M3 7v10a2 2 0 002 2h14a2 2 0 002-2V9a2 2 0 00-2-2h-6l-2-2H5a2 2 0 00-2 2z"
                       ></path>
                     </svg>
-                    /
+                    <span x-text="$store.account.cwdFullPath"></span>
                   </a>
                 </li>
                 <!-- <li>

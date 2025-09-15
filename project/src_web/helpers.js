@@ -1,3 +1,5 @@
+const CHUNK_SIZE = 8 * 1024 * 1024;
+
 // --- static maps -----------------------------------------------------------
 const IOS_RESOLUTION_TO_MODEL = new Map([
   // width×height in *physical* pixels (portrait order) ➜ model(s)
@@ -198,3 +200,107 @@ export const generateJSONTree = ymap => {
 
   return roots.map(cleanNode);
 };
+
+function* generateAllChunks(files, chunkSize) {
+  for (const file of files) {
+    const fileId = crypto.randomUUID();
+    const keyData = crypto.getRandomValues(new Uint8Array(32));
+    const totalChunks = Math.ceil(file.size / chunkSize);
+
+    for (let i = 0; i < totalChunks; i++) {
+      const start = i * chunkSize;
+      const end = Math.min(start + chunkSize, file.size);
+
+      yield {
+        fileId,
+        keyData,
+        file, // Include file object for slicing
+        fileName: file.name,
+        fileSize: file.size,
+        chunkIndex: i,
+        totalChunks,
+        start,
+        end,
+        size: end - start,
+      };
+    }
+    console.log('Generated', totalChunks, 'chunks for file', file.name);
+  }
+}
+
+export async function uploadWithSharedQueue(files, workers, config) {
+  const allChunks = [...generateAllChunks(files, config.chunkSize || CHUNK_SIZE)];
+  const totalChunks = allChunks.length;
+  const chunksPerWorker = Math.ceil(totalChunks / workers.length);
+  // Split chunks among workers
+  const workerBatches = [];
+  for (let i = 0; i < workers.length; i++) {
+    const start = i * chunksPerWorker;
+    const end = Math.min(start + chunksPerWorker, totalChunks);
+    if (start < totalChunks) {
+      workerBatches.push({
+        worker: workers[i],
+        chunks: allChunks.slice(start, end),
+      });
+    }
+  }
+
+  // Process all batches in parallel
+  const batchResults = await Promise.all(workerBatches.map(batch => processBatch(batch.worker, batch.chunks, config)));
+
+  // Merge results from all workers
+  const mergedResults = {};
+  for (const workerResult of batchResults) {
+    for (const [fileId, fileData] of Object.entries(workerResult)) {
+      if (!mergedResults[fileId]) {
+        mergedResults[fileId] = fileData;
+      } else {
+        // Merge chunks from different workers
+        fileData.chunks.forEach((chunk, index) => {
+          if (chunk) mergedResults[fileId].chunks[index] = chunk;
+        });
+        // Merge errors if any
+        if (fileData.errors) {
+          if (!mergedResults[fileId].errors) mergedResults[fileId].errors = [];
+          mergedResults[fileId].errors.push(...fileData.errors);
+        }
+      }
+    }
+  }
+
+  return mergedResults;
+}
+
+export async function processBatch(worker, chunks, config) {
+  return new Promise((resolve, reject) => {
+    const messageHandler = e => {
+      if (e.data.type === 'complete') {
+        worker.removeEventListener('message', messageHandler);
+        if (e.data.success) {
+          resolve(e.data.data);
+        } else {
+          reject(new Error(e.data.error));
+        }
+      } else if (e.data.type === 'error') {
+        worker.removeEventListener('message', messageHandler);
+        reject(new Error(e.data.error));
+      } else if (e.data.type === 'progress') {
+        // Update progress UI
+        console.log(e.data.fileName, e.data);
+      }
+    };
+
+    worker.addEventListener('message', messageHandler);
+
+    // Send entire batch to worker
+    worker.postMessage({
+      action: 'uploadBatch',
+      chunks: chunks,
+      config: {
+        endpoint: config.endpoint,
+        authToken: config.authToken,
+        userId: config.userId,
+      },
+    });
+  });
+}

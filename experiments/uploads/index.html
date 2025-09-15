@@ -272,11 +272,6 @@
           <input type="text" id="userId" placeholder="user-123" value="user-123" required />
         </div>
 
-        <div class="form-group">
-          <label for="encryptionKey">Encryption Key (Optional)</label>
-          <input type="password" id="encryptionKey" placeholder="Leave empty to skip encryption" />
-        </div>
-
         <div class="config-toggle">
           <input type="checkbox" id="enableChunking" />
           <label for="enableChunking">Enable chunking for large files</label>
@@ -305,7 +300,8 @@
     </div>
 
     <script>
-      const worker = new Worker('this_worker.js');
+      const workerCount = navigator.hardwareConcurrency > 2 ? 2 : 1 || 1;
+      const workers = Array.from({ length: workerCount }, () => new Worker('this_worker.js'));
 
       // File management
       const fileInput = document.getElementById('files');
@@ -320,7 +316,7 @@
 
       let selectedFiles = [];
       let uploadResults = [];
-
+      const CHUNK_SIZE = 8 * 1024 * 1024;
       // Toggle chunk size input
       enableChunking.addEventListener('change', e => {
         chunkSizeGroup.style.display = e.target.checked ? 'block' : 'none';
@@ -361,8 +357,79 @@
         return Math.round((bytes / Math.pow(k, i)) * 100) / 100 + ' ' + sizes[i];
       }
 
-      // Promise wrapper for worker messages
-      function sendWorkerMessage(message) {
+      function* generateAllChunks(files, chunkSize) {
+        for (const file of files) {
+          const fileId = crypto.randomUUID();
+          const keyData = crypto.getRandomValues(new Uint8Array(32));
+          const totalChunks = Math.ceil(file.size / chunkSize);
+
+          for (let i = 0; i < totalChunks; i++) {
+            const start = i * chunkSize;
+            const end = Math.min(start + chunkSize, file.size);
+
+            yield {
+              fileId,
+              keyData,
+              file, // Include file object for slicing
+              fileName: file.name,
+              fileSize: file.size,
+              chunkIndex: i,
+              totalChunks,
+              start,
+              end,
+              size: end - start,
+            };
+          }
+        }
+      }
+
+      async function uploadWithSharedQueue(files, workers, config) {
+        const allChunks = [...generateAllChunks(files, CHUNK_SIZE)];
+        const totalChunks = allChunks.length;
+        const chunksPerWorker = Math.ceil(totalChunks / workers.length);
+
+        // Split chunks among workers
+        const workerBatches = [];
+        for (let i = 0; i < workers.length; i++) {
+          const start = i * chunksPerWorker;
+          const end = Math.min(start + chunksPerWorker, totalChunks);
+          if (start < totalChunks) {
+            workerBatches.push({
+              worker: workers[i],
+              chunks: allChunks.slice(start, end),
+            });
+          }
+        }
+
+        // Process all batches in parallel
+        const batchResults = await Promise.all(
+          workerBatches.map(batch => processBatch(batch.worker, batch.chunks, config)),
+        );
+
+        // Merge results from all workers
+        const mergedResults = {};
+        for (const workerResult of batchResults) {
+          for (const [fileId, fileData] of Object.entries(workerResult)) {
+            if (!mergedResults[fileId]) {
+              mergedResults[fileId] = fileData;
+            } else {
+              // Merge chunks from different workers
+              fileData.chunks.forEach((chunk, index) => {
+                if (chunk) mergedResults[fileId].chunks[index] = chunk;
+              });
+              // Merge errors if any
+              if (fileData.errors) {
+                if (!mergedResults[fileId].errors) mergedResults[fileId].errors = [];
+                mergedResults[fileId].errors.push(...fileData.errors);
+              }
+            }
+          }
+        }
+
+        return mergedResults;
+      }
+
+      async function processBatch(worker, chunks, config) {
         return new Promise((resolve, reject) => {
           const messageHandler = e => {
             if (e.data.type === 'complete') {
@@ -377,12 +444,22 @@
               reject(new Error(e.data.error));
             } else if (e.data.type === 'progress') {
               // Update progress UI
-              updateProgress(message.file.name, e.data);
+              updateProgress(e.data.fileName, e.data);
             }
           };
 
           worker.addEventListener('message', messageHandler);
-          worker.postMessage(message);
+
+          // Send entire batch to worker
+          worker.postMessage({
+            action: 'uploadBatch',
+            chunks: chunks,
+            config: {
+              endpoint: config.endpoint,
+              authToken: config.authToken,
+              userId: config.userId,
+            },
+          });
         });
       }
 
@@ -425,7 +502,6 @@
         const endpoint = document.getElementById('endpoint').value;
         const authToken = document.getElementById('authToken').value;
         const userId = document.getElementById('userId').value;
-        const encryptionKey = document.getElementById('encryptionKey').value;
         const useChunking = document.getElementById('enableChunking').checked;
         const chunkSize = useChunking ? parseInt(document.getElementById('chunkSize').value) * 1024 * 1024 : null;
 
@@ -439,38 +515,14 @@
 
         try {
           // Upload each file
-          const uploadPromises = selectedFiles.map(async file => {
-            const fileAliasId = crypto.randomUUID(); // Generate a unique ID for the file
-            try {
-              const result = await sendWorkerMessage({
-                action: 'upload',
-                fileId: fileAliasId,
-                file,
-                endpoint,
-                authToken,
-                userId,
-                encryptionKey: encryptionKey || null,
-                chunkSize,
-              });
-
-              return {
-                success: true,
-                fileId: fileAliasId,
-                fileName: file.name,
-                result,
-              };
-            } catch (error) {
-              return {
-                success: false,
-                fileId: fileAliasId,
-                fileName: file.name,
-                error: error.message,
-              };
-            }
+          const uploadPromise = await uploadWithSharedQueue(selectedFiles, workers, {
+            endpoint,
+            authToken,
+            userId,
+            chunkSize,
           });
-
           // Wait for all uploads
-          uploadResults = await Promise.all(uploadPromises);
+          uploadResults = uploadPromise;
 
           // Display results
           displayResults();
@@ -482,9 +534,30 @@
       });
 
       // Display upload results
+      // Fixed displayResults function for your index.html
+
       function displayResults() {
-        const successful = uploadResults.filter(r => r.success);
-        const failed = uploadResults.filter(r => !r.success);
+        console.log('Upload Results:', uploadResults);
+
+        const successful = [];
+        const failed = [];
+
+        // Process results from each file
+        for (const [fileId, fileData] of Object.entries(uploadResults)) {
+          if (fileData.errors && fileData.errors.length > 0) {
+            failed.push({
+              fileName: fileData.fileName,
+              errors: fileData.errors,
+            });
+          } else {
+            successful.push({
+              fileName: fileData.fileName,
+              fileId: fileId,
+              chunks: fileData.chunks,
+              totalChunks: fileData.totalChunks,
+            });
+          }
+        }
 
         if (successful.length === 0 && failed.length === 0) {
           return;
@@ -492,44 +565,48 @@
 
         resultsDiv.style.display = 'block';
         resultsDiv.innerHTML = `
-                <h3>Upload Results</h3>
-                ${
-                  successful.length > 0
-                    ? `
-                    <h4>✅ Successfully uploaded (${successful.length})</h4>
-                    ${successful
-                      .map(
-                        r => `
-                        <div class="result-item">
-                            <strong>${r.fileName}</strong><br>
-                            ETag: ${Array.isArray(r.result.etag) ? r.result.etag.join(', ') : r.result.etag}
-                        </div>
-                    `,
-                      )
-                      .join('')}
-                `
-                    : ''
-                }
-                ${
-                  failed.length > 0
-                    ? `
-                    <h4>❌ Failed uploads (${failed.length})</h4>
-                    ${failed
-                      .map(
-                        r => `
-                        <div class="result-item" style="background: #f8d7da;">
-                            <strong>${r.fileName}</strong><br>
-                            Error: ${r.error}
-                        </div>
-                    `,
-                      )
-                      .join('')}
-                `
-                    : ''
-                }
-            `;
+    <h3>Upload Results</h3>
+    ${
+      successful.length > 0
+        ? `
+        <h4>✅ Successfully uploaded (${successful.length})</h4>
+        ${successful
+          .map(
+            r => `
+            <div class="result-item">
+                <strong>${r.fileName}</strong><br>
+                File ID: ${r.fileId}<br>
+                Chunks: ${r.chunks.filter(c => c).length}/${r.totalChunks}<br>
+                ETags: ${r.chunks
+                  .filter(c => c)
+                  .map(c => c.etag)
+                  .join(', ')}
+            </div>
+        `,
+          )
+          .join('')}
+    `
+        : ''
+    }
+    ${
+      failed.length > 0
+        ? `
+        <h4>❌ Failed uploads (${failed.length})</h4>
+        ${failed
+          .map(
+            r => `
+            <div class="result-item" style="background: #f8d7da;">
+                <strong>${r.fileName}</strong><br>
+                Errors: ${r.errors.map(e => `Chunk ${e.chunkIndex}: ${e.error}`).join('<br>')}
+            </div>
+        `,
+          )
+          .join('')}
+    `
+        : ''
+    }
+  `;
       }
-
       // Show error message
       function showError(message) {
         errorDiv.style.display = 'block';

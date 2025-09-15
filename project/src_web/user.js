@@ -42,8 +42,32 @@ export async function updateRootFile(userId, deviceName, authToken, lastEtag, en
       Authorization: `Bearer ${authToken}`,
       'X-User-Id': userId,
     },
-    body: JSON.stringify({ lastEtag, rootfileData }),
+    body: JSON.stringify(rootfileData),
   });
   const data = await response.json();
   return data;
+}
+
+export async function userStreamListener(
+  userId,
+  deviceName,
+  authToken,
+  endpoint,
+  onMessage,
+  onError,
+  onOpen,
+  abortSignal,
+) {
+  fetch(`${endpoint}/sse-updates`, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'text/event-stream',
+      Authorization: `Bearer ${authToken}`,
+      'X-User-Id': userId,
+      'Cache-Control': 'no-cache',
+      Connection: 'keep-alive',
+    },
+    body: JSON.stringify({ deviceName }),
+    signal: abortSignal,
+  });
 }

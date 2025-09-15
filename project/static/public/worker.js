@@ -1,172 +1,224 @@
-const CONCURRENT_UPLOADS_PER_WORKER = 3;
+// File Worker - handles batch chunk uploads
 const MAX_RETRIES = 3;
-const RETRY_DELAYS = [500, 1200, 3000];
-let cryptoKey;
+const RETRY_DELAYS = [500, 1000, 2000];
+
+// Message handler
 self.onmessage = async e => {
-  const { file, authToken, cKey, endpoint, chunkSize, startChunk, endChunk, totalChunks } = e.data;
-  cryptoKey = await importCryptoKey(cKey);
+  const { action, ...params } = e.data;
+
   try {
-    const results = await processFileChunksParallel(
-      file,
-      authToken,
-      endpoint,
-      chunkSize,
-      startChunk,
-      endChunk,
-      totalChunks,
-    );
+    let result;
+    switch (action) {
+      case 'uploadBatch':
+        result = await handleBatchUpload(params);
+        break;
+      case 'download':
+        result = await handleDownload(params);
+        break;
+      default:
+        throw new Error(`Unknown action: ${action}`);
+    }
 
     self.postMessage({
       type: 'complete',
-      data: { success: true, error: null, results },
+      success: true,
+      data: result,
     });
   } catch (error) {
     self.postMessage({
-      type: 'complete',
-      data: { success: false, error: error.message },
+      type: 'error',
+      success: false,
+      error: error.message,
     });
   }
 };
 
-function* chunkGenerator(file, chunkSize, startChunk, endChunk) {
-  for (let chunkIndex = startChunk; chunkIndex < endChunk; chunkIndex++) {
-    const offset = chunkIndex * chunkSize;
-    const end = Math.min(offset + chunkSize, file.size);
-    yield {
-      chunkIndex,
-      offset,
-      end,
-      blob: file.slice(offset, end),
-    };
-  }
-}
+// ============= BATCH UPLOAD FUNCTIONS =============
 
-async function processFileChunksParallel(file, authToken, endpoint, chunkSize, startChunk, endChunk, totalChunks) {
-  const results = [];
-  const chunks = chunkGenerator(file, chunkSize, startChunk, endChunk);
-  const uploadPromises = [];
-  const activeUploads = new Set();
+async function handleBatchUpload({ chunks, config }) {
+  const results = {};
+  // Process each chunk in the batch
+  for (const chunk of chunks) {
+    try {
+      const chunkBlob = chunk.file.slice(chunk.start, chunk.end);
+      const data = new Uint8Array(await chunkBlob.arrayBuffer());
 
-  for (const chunkData of chunks) {
-    while (activeUploads.size >= CONCURRENT_UPLOADS_PER_WORKER) {
-      await Promise.race(activeUploads);
-    }
+      // Encrypt if key provided
+      const processedData = await encryptData(data, chunk.keyData);
 
-    const uploadPromise = processAndUploadChunk(chunkData, endpoint, authToken, file.name, totalChunks)
-      .then(result => {
-        results.push(result);
-        activeUploads.delete(uploadPromise);
-        return result;
-      })
-      .catch(error => {
-        activeUploads.delete(uploadPromise);
-        throw error;
+      // Send progress update
+      self.postMessage({
+        type: 'progress',
+        fileName: chunk.fileName,
+        chunkIndex: chunk.chunkIndex,
+        totalChunks: chunk.totalChunks,
+        status: 'uploading',
       });
 
-    activeUploads.add(uploadPromise);
-    uploadPromises.push(uploadPromise);
+      // Upload with retry logic
+      const uploadResult = await uploadWithRetry(processedData, config.endpoint, config.authToken, config.userId, {
+        fileId: chunk.fileId,
+        fileName: chunk.fileName,
+        chunkIndex: chunk.chunkIndex,
+        totalChunks: chunk.totalChunks,
+      });
+
+      // Store result by fileId
+      if (!results[chunk.fileId]) {
+        results[chunk.fileId] = {
+          fileName: chunk.fileName,
+          fileSize: chunk.fileSize,
+          totalChunks: chunk.totalChunks,
+          keyData: chunk.keyData,
+          chunks: [],
+        };
+      }
+      results[chunk.fileId].chunks[chunk.chunkIndex] = uploadResult;
+
+      // Send completion progress
+      self.postMessage({
+        type: 'progress',
+        fileName: chunk.fileName,
+        chunkIndex: chunk.chunkIndex,
+        totalChunks: chunk.totalChunks,
+        status: 'completed',
+      });
+    } catch (error) {
+      // Store error for this chunk
+      if (!results[chunk.fileId]) {
+        results[chunk.fileId] = {
+          fileName: chunk.fileName,
+          fileSize: chunk.fileSize,
+          totalChunks: chunk.totalChunks,
+          chunks: [],
+          errors: [],
+        };
+      }
+      if (!results[chunk.fileId].errors) results[chunk.fileId].errors = [];
+      results[chunk.fileId].errors.push({
+        chunkIndex: chunk.chunkIndex,
+        error: error.message,
+      });
+
+      self.postMessage({
+        type: 'progress',
+        fileName: chunk.fileName,
+        chunkIndex: chunk.chunkIndex,
+        totalChunks: chunk.totalChunks,
+        status: 'failed',
+        error: error.message,
+      });
+    }
   }
 
-  await Promise.all(uploadPromises);
-  results.sort((a, b) => a.chunkIndex - b.chunkIndex);
   return results;
 }
 
-async function processAndUploadChunk(chunkData, endpoint, authToken, fileName, totalChunks) {
-  const { chunkIndex, blob } = chunkData;
-
-  try {
-    self.postMessage({
-      type: 'progress',
-      data: { chunkIndex, status: 'processing' },
-    });
-
-    const encryptedData = await encryptChunk(new Uint8Array(await blob.arrayBuffer()), cryptoKey);
-
-    const uploadResult = await uploadChunkBinary(
-      encryptedData,
-      endpoint,
-      authToken,
-      fileName,
-      chunkIndex,
-      totalChunks,
-      chunkIndex === totalChunks - 1,
-    );
-
-    if (!uploadResult.success) {
-      throw new Error(`Failed to upload chunk ${chunkIndex}`);
-    }
-
-    const result = {
-      chunkIndex,
-      etag: uploadResult.etag || `chunk-${chunkIndex}-${Date.now()}`,
-    };
-
-    self.postMessage({
-      type: 'progress',
-      data: { chunkIndex, status: 'completed' },
-    });
-
-    self.postMessage({
-      type: 'chunk-complete',
-      data: result,
-    });
-
-    return result;
-  } catch (error) {
-    self.postMessage({
-      type: 'progress',
-      data: { chunkIndex, status: 'failed' },
-    });
-    throw new Error(`Chunk ${chunkIndex} failed: ${error.message}`);
-  }
-}
-
-async function importCryptoKey(keyBuffer) {
-  // const encoder = new TextEncoder();
-  // const keyData = encoder.encode(key);
-  // const hashBuffer = await crypto.subtle.digest('SHA-256', keyData);
-  return await crypto.subtle.importKey('raw', keyBuffer, { name: 'AES-GCM' }, false, ['encrypt']);
-}
-
-async function encryptChunk(data) {
-  const iv = crypto.getRandomValues(new Uint8Array(12));
-  const encryptedBuffer = await crypto.subtle.encrypt({ name: 'AES-GCM', iv }, cryptoKey, data);
-  const result = new Uint8Array(iv.length + encryptedBuffer.byteLength);
-  result.set(iv);
-  result.set(new Uint8Array(encryptedBuffer), iv.length);
-  return result;
-}
-
-async function uploadChunkBinary(encryptedData, endpoint, authToken, fileName, chunkIndex, totalChunks, isLast) {
+async function uploadWithRetry(data, endpoint, authToken, userId, metadata) {
   for (let attempt = 0; attempt < MAX_RETRIES; attempt++) {
     try {
       const response = await fetch(endpoint, {
         method: 'POST',
         headers: {
           Authorization: `Bearer ${authToken}`,
-          // 'Content-Type': 'application/octet-stream',
-          // Don't set Content-Type - browser will set it with boundary
+          'X-User-Id': userId,
+          'Content-Type': 'application/octet-stream',
+          'Content-Disposition': `attachment; filename="${metadata.fileId}_${metadata.chunkIndex}"`,
         },
-        body: encryptedData,
+        body: data,
       });
 
       if (!response.ok) {
-        throw new Error(`HTTP error! status: ${response.status}`);
+        if (response.status === 401) {
+          throw new Error(`Upload failed: ${response.status} - Unauthorized`);
+        }
+        throw new Error(`Upload failed: ${response.status}`);
       }
 
       const result = await response.json();
-      const etag = response.headers.get('etag') || result.etag || result.ETag || `${fileName}-chunk-${chunkIndex}`;
-
-      return { success: true, etag };
+      return {
+        fileId: metadata.fileId,
+        chunkIndex: metadata.chunkIndex,
+        etag: result.etag || `${metadata.fileId}_${metadata.chunkIndex}`,
+        size: data.byteLength,
+      };
     } catch (error) {
-      console.error(`Upload attempt ${attempt + 1} failed for chunk ${chunkIndex}:`, error);
-
       if (attempt < MAX_RETRIES - 1) {
-        await new Promise(resolve => setTimeout(resolve, RETRY_DELAYS[attempt]));
+        await new Promise(r => setTimeout(r, RETRY_DELAYS[attempt]));
       } else {
         throw error;
       }
     }
   }
+}
+
+// ============= DOWNLOAD FUNCTIONS =============
+
+async function handleDownload({ fileId, endpoint, authToken, userId, decryptionKey }) {
+  const data = await downloadWithRetry(fileId, endpoint, authToken, userId);
+  const processedData = decryptionKey ? await decryptData(data, decryptionKey) : data;
+  const blob = new Blob([processedData]);
+
+  return {
+    blob,
+    size: processedData.byteLength,
+    decrypted: !!decryptionKey,
+  };
+}
+
+async function downloadWithRetry(fileId, endpoint, authToken, userId) {
+  for (let attempt = 0; attempt < MAX_RETRIES; attempt++) {
+    try {
+      const response = await fetch(`${endpoint}/${fileId}`, {
+        method: 'GET',
+        headers: {
+          Authorization: `Bearer ${authToken}`,
+          'X-User-Id': userId,
+        },
+      });
+
+      if (!response.ok) {
+        throw new Error(`Download failed: ${response.status}`);
+      }
+
+      const arrayBuffer = await response.arrayBuffer();
+      return new Uint8Array(arrayBuffer);
+    } catch (error) {
+      if (attempt < MAX_RETRIES - 1) {
+        await new Promise(r => setTimeout(r, RETRY_DELAYS[attempt]));
+      } else {
+        throw error;
+      }
+    }
+  }
+}
+
+// ============= ENCRYPTION FUNCTIONS =============
+
+async function importKey(keyData) {
+  if (typeof keyData === 'string') {
+    const encoder = new TextEncoder();
+    const keyBuffer = await crypto.subtle.digest('SHA-256', encoder.encode(keyData));
+    return await crypto.subtle.importKey('raw', keyBuffer, { name: 'AES-GCM' }, false, ['encrypt', 'decrypt']);
+  }
+  return await crypto.subtle.importKey('raw', keyData, { name: 'AES-GCM' }, false, ['encrypt', 'decrypt']);
+}
+
+async function encryptData(data, key) {
+  const cryptoKey = await importKey(key);
+  const iv = crypto.getRandomValues(new Uint8Array(12));
+  const encrypted = await crypto.subtle.encrypt({ name: 'AES-GCM', iv }, cryptoKey, data);
+
+  const result = new Uint8Array(iv.length + encrypted.byteLength);
+  result.set(iv);
+  result.set(new Uint8Array(encrypted), iv.length);
+  return result;
+}
+
+async function decryptData(data, key) {
+  const cryptoKey = await importKey(key);
+  const iv = data.slice(0, 12);
+  const encrypted = data.slice(12);
+  const decrypted = await crypto.subtle.decrypt({ name: 'AES-GCM', iv }, cryptoKey, encrypted);
+  return new Uint8Array(decrypted);
 }
