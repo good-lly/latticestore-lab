@@ -1,5 +1,18 @@
 # Build Journal
 
+### Day 7 - 2025-09-11 - Parallel uploads, S3 backend, and SSE magic
+
+System generates encryption keys now automatically per-file, now - 32 bytes of randomness, done.
+Big architectural shift today: Redis is just metadata now. Actual files go to S3 (via s3mini library). Why? Redis wasn't built to store 100MB videos. S3 was. Simple.
+
+#### What actually shipped:
+
+- Parallel chunk uploads with worker pools (navigator.hardwareConcurrency workers, capped at 2. After several tests 2 seems optimal for most multicore machines - more just clogs up the network + added overhead for managing more workers)
+- Batch processing - workers grab chunks from a shared queue instead of one-file-per-worker (supports multiple simultaneous uploads now plus large files)
+- SSE endpoint for real-time sync notifications. When file changes on server, all clients know instantly
+- LatStore class (Lattice Store) - the actual sync engine. Handles auth, tracks etags, manages workers ... more to come.
+  WIP - Stay tuned!
+
 ### Day 5 & Day 6 - 2025-09-10 - FileBrowsing / upload / download / dummy user registration / etc / everything is in WIP
 
 After a short break in Ireland, grinding the basics again. File browser UI - half done. Upload/download with WebWorkers - works on my machine™. Dummy auth - exists. The real story: I'm sitting here implementing file uploads and realizing Yjs might be complete overkill for this.
