@@ -169,6 +169,26 @@ export const openMultiFilePicker = callback => {
   input.click();
 };
 
+export function isValidDirName(name) {
+  // Quick checks
+  if (!name || name.length > 255) return false;
+
+  // Non-printable characters (0x00-0x1F, 0x7F-0x9F)
+  if (/[\x00-\x1F\x7F-\x9F]/.test(name)) return false;
+
+  // Invalid characters for any OS
+  if (/[<>:"|?*\/\\]/.test(name)) return false;
+
+  // Windows: no trailing dots or spaces
+  if (/[. ]$/.test(name)) return false;
+
+  // Windows reserved names
+  const upper = name.toUpperCase();
+  if (/^(CON|PRN|AUX|NUL|COM[1-9]|LPT[1-9])$/.test(upper)) return false;
+
+  return true;
+}
+
 export const generateJSONTree = ymap => {
   const nodes = {};
   ymap.forEach((value, key) => {

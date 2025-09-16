@@ -1,5 +1,5 @@
 import { sha256 } from './crypto.js';
-import { userLogin, userRegister, userLogout, userStreamListener } from './user.js';
+import { userLogin, userRegister, userLogout, updateRootFile, userStreamListener } from './user.js';
 
 const workerCount = navigator.hardwareConcurrency > 2 ? 2 : 1 || 1;
 const CHUNK_SIZE = 8 * 1024 * 1024; // 8MB chunks
@@ -38,7 +38,7 @@ class LatStore {
         this.isLoggedIn = true;
         this.password = password;
         this.endpoint = endpoint;
-        this.rootFileData = loginResp.data;
+        this.rootFileData = new Map(Object.entries(loginResp.data));
         this.rootFileEtag = loginResp.dataEtag;
         this.listener = this._listenForUpdates();
       } else {
@@ -91,6 +91,58 @@ class LatStore {
     }
   }
 
+  async addNewDir(parentId, name) {
+    if (!this.isLoggedIn || !this.userId || !this.deviceName || !this.endpoint || !this.authToken) {
+      console.error('Cannot add directory: User not logged in or missing information');
+      return;
+    }
+    const newDir = {
+      id: crypto.randomUUID(),
+      name: name,
+      type: 'inode/directory',
+      children: [],
+      parent: parentId,
+    };
+    // const isRootfileArray = Array.isArray(this.rootFileData);
+    // if (isRootfileArray) {
+    //   this.rootFileData.push(newDir);
+    // } else {
+    //   this.rootFileData = [newDir];
+    // }
+    this.rootFileData.set(newDir.id, newDir);
+    const updated = await this.updateRootFile();
+    if (updated) {
+      console.log('Directory added successfully');
+    } else {
+      console.error('Failed to add directory - retry');
+      await this.addNewDir(parentId, name);
+    }
+    return updated;
+  }
+
+  async updateRootFile() {
+    if (!this.isLoggedIn || !this.userId || !this.endpoint || !this.rootFileEtag || !this.authToken) {
+      console.error('Cannot update root file: User not logged in or missing information');
+      return;
+    }
+    const updated = await updateRootFile(
+      this.userId,
+      this.authToken,
+      this.rootFileEtag,
+      this.endpoint,
+      this.rootFileData,
+    );
+    if (updated.ok && updated.dataEtag) {
+      this.rootFileEtag = updated.dataEtag;
+      return true;
+    } else {
+      console.error('Failed to update root file');
+      this.rootFileData = new Map(Object.entries(updated.data));
+      this.rootFileEtag = updated.dataEtag;
+      return false;
+    }
+  }
+
   async _listenForUpdates() {
     if (
       !this.isLoggedIn ||
@@ -116,6 +168,16 @@ class LatStore {
       },
       this.abortController.signal,
     );
+  }
+
+  getFilesInDir(dirId) {
+    let files = [];
+    for (const item of this.rootFileData.values()) {
+      if (item.parent === dirId) {
+        files.push(item);
+      }
+    }
+    return files;
   }
 }
 

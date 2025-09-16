@@ -34,15 +34,16 @@ export async function userLogout(userId, endpoint) {
   return data;
 }
 
-export async function updateRootFile(userId, deviceName, authToken, lastEtag, endpoint, rootfileData) {
-  const response = await fetch(`${endpoint}/update-root-file`, {
-    method: 'POST',
+export async function updateRootFile(userId, authToken, lastEtag, endpoint, rootfileData) {
+  const response = await fetch(`${endpoint}/update-rootfile`, {
+    method: 'PUT',
     headers: {
       'Content-Type': 'application/json',
       Authorization: `Bearer ${authToken}`,
       'X-User-Id': userId,
+      'If-Match': lastEtag,
     },
-    body: JSON.stringify(rootfileData),
+    body: JSON.stringify(Object.fromEntries(rootfileData)),
   });
   const data = await response.json();
   return data;
