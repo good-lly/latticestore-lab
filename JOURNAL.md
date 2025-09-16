@@ -1,5 +1,19 @@
 # Build Journal
 
+### Day 8 - 2025-09-16 - Directories work. Conflict resolution works. UI barely works.
+
+Shipped:
+
+- Directory creation with validation (no Windows reserved names, no weird Unicode, 255 char limit)
+- Optimistic conflict resolution on PUT /update-rootfile - if etags don't match, server returns both versions. Client decides - merges.
+- S3 fallback when Redis cache misses - fetch from cold storage, warm the cache, carry on
+- Files now display in UI (cwdFiles finally populated from rootFileData Map)
+- Spend a day with a lot of operations, configurations, etc ...
+
+Reality: Directory names get validated but files don't upload into them yet. The file browser shows folders you can't enter. Classic day 8 - everything half works.
+rootFileData is now a Map instead of array. Why? O(1) lookups beat array.find() when you have 10,000 files.
+Tomorrow: Make directories actually navigable. Rewrite into smart merging strategy. No CRDT complexity.
+
 ### Day 7 - 2025-09-15 - Parallel uploads, S3 backend, and SSE magic
 
 System generates encryption keys now automatically per-file, now - 32 bytes of randomness, done.
