@@ -10,7 +10,7 @@ Shipped:
 - Files now display in UI (cwdFiles finally populated from rootFileData Map)
 - Spend a day with a lot of operations, configurations, etc ...
 
-Reality: Directory names get validated but files don't upload into them yet. The file browser shows folders you can't enter. Classic day 8 - everything half works.
+Reality: Directory names get validated but files don't upload into them yet. The file browser shows folders you can't enter. Everything half works.
 rootFileData is now a Map instead of array. Why? O(1) lookups beat array.find() when you have 10,000 files.
 Tomorrow: Make directories actually navigable. Rewrite into smart merging strategy. No CRDT complexity.
 

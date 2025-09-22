@@ -12,6 +12,9 @@ self.onmessage = async e => {
       case 'uploadBatch':
         result = await handleBatchUpload(params);
         break;
+      case 'uploadSingle':
+        result = await handleSingleUpload(params);
+        break;
       case 'download':
         result = await handleDownload(params);
         break;
@@ -117,14 +120,23 @@ async function handleBatchUpload({ chunks, config }) {
 async function uploadWithRetry(data, endpoint, authToken, userId, metadata) {
   for (let attempt = 0; attempt < MAX_RETRIES; attempt++) {
     try {
-      const response = await fetch(endpoint, {
+      const fileName =
+        typeof metadata.chunkIndex === 'undefined' ? metadata.fileId : `${metadata.fileId}_${metadata.chunkIndex}`;
+
+      const headers = {
+        Authorization: `Bearer ${authToken}`,
+        'X-User-Id': userId,
+        'Content-Type': 'application/octet-stream',
+        'Content-Disposition': `attachment; filename="${fileName}"`,
+      };
+
+      // Add If-Match header if etag exists
+      if (metadata.etag) {
+        headers['If-Match'] = metadata.etag;
+      }
+      const response = await fetch(`${endpoint}/upload`, {
         method: 'POST',
-        headers: {
-          Authorization: `Bearer ${authToken}`,
-          'X-User-Id': userId,
-          'Content-Type': 'application/octet-stream',
-          'Content-Disposition': `attachment; filename="${metadata.fileId}_${metadata.chunkIndex}"`,
-        },
+        headers,
         body: data,
       });
 
@@ -139,8 +151,15 @@ async function uploadWithRetry(data, endpoint, authToken, userId, metadata) {
       return {
         fileId: metadata.fileId,
         chunkIndex: metadata.chunkIndex,
-        etag: result.etag || `${metadata.fileId}_${metadata.chunkIndex}`,
         size: data.byteLength,
+        ok: true,
+        message: 'Chunk uploaded successfully',
+        newEtag: result.newEtag,
+        bytesUsed: result.newBytesUsed,
+        bytesLimit: result.bytesLimit,
+        percentageUsed: result.newPercentageUsed,
+        remainingBytes: result.newRemainingBytes,
+        limited: result.limited,
       };
     } catch (error) {
       if (attempt < MAX_RETRIES - 1) {
@@ -152,10 +171,27 @@ async function uploadWithRetry(data, endpoint, authToken, userId, metadata) {
   }
 }
 
+async function handleSingleUpload({ data, keyData, config, metadata }) {
+  // Convert Map to Uint8Array if needed
+  const uint8Data = data instanceof Uint8Array ? data : new TextEncoder().encode(JSON.stringify([...data]));
+
+  // Encrypt
+  const encrypted = keyData ? await encryptData(uint8Data, keyData) : uint8Data;
+
+  // Upload using existing function
+  const result = await uploadWithRetry(encrypted, config.endpoint, config.authToken, config.userId, {
+    fileId: metadata.fileId,
+    fileName: metadata.fileName,
+    etag: metadata.etag,
+  });
+
+  return { ...result, encrypted: !!keyData };
+}
+
 // ============= DOWNLOAD FUNCTIONS =============
 
 async function handleDownload({ fileId, endpoint, authToken, userId, decryptionKey }) {
-  const data = await downloadWithRetry(fileId, endpoint, authToken, userId);
+  const { data, etag } = await downloadWithRetry(fileId, endpoint, authToken, userId);
   const processedData = decryptionKey ? await decryptData(data, decryptionKey) : data;
   const blob = new Blob([processedData]);
 
@@ -163,13 +199,14 @@ async function handleDownload({ fileId, endpoint, authToken, userId, decryptionK
     blob,
     size: processedData.byteLength,
     decrypted: !!decryptionKey,
+    etag: etag,
   };
 }
 
 async function downloadWithRetry(fileId, endpoint, authToken, userId) {
   for (let attempt = 0; attempt < MAX_RETRIES; attempt++) {
     try {
-      const response = await fetch(`${endpoint}/${fileId}`, {
+      const response = await fetch(`${endpoint}/download/${fileId}`, {
         method: 'GET',
         headers: {
           Authorization: `Bearer ${authToken}`,
@@ -182,7 +219,7 @@ async function downloadWithRetry(fileId, endpoint, authToken, userId) {
       }
 
       const arrayBuffer = await response.arrayBuffer();
-      return new Uint8Array(arrayBuffer);
+      return { data: new Uint8Array(arrayBuffer), etag: response.headers.get('ETag') };
     } catch (error) {
       if (attempt < MAX_RETRIES - 1) {
         await new Promise(r => setTimeout(r, RETRY_DELAYS[attempt]));

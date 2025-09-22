@@ -221,6 +221,38 @@ export const generateJSONTree = ymap => {
   return roots.map(cleanNode);
 };
 
+export async function downloadAndDecryptFile(fileKey, keyData, config, worker) {
+  const { endpoint, authToken, userId } = config;
+  return new Promise((resolve, reject) => {
+    const messageHandler = e => {
+      if (e.data.type === 'complete') {
+        worker.removeEventListener('message', messageHandler);
+        if (e.data.success) {
+          resolve(e.data.data);
+        } else {
+          reject(new Error(e.data.error));
+        }
+      } else if (e.data.type === 'error') {
+        worker.removeEventListener('message', messageHandler);
+        reject(new Error(e.data.error));
+      } else if (e.data.type === 'progress') {
+        // Update progress UI
+        console.log('Download progress:', e.data);
+      }
+    };
+
+    worker.addEventListener('message', messageHandler);
+
+    worker.postMessage({
+      action: 'download',
+      fileId: fileKey,
+      endpoint,
+      authToken,
+      userId,
+      decryptionKey: keyData,
+    });
+  });
+}
 function* generateAllChunks(files, chunkSize) {
   for (const file of files) {
     const fileId = crypto.randomUUID();

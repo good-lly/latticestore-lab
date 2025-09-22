@@ -12,15 +12,8 @@
       import Alpine from 'alpinejs';
       import persist from '@alpinejs/persist';
       import focus from '@alpinejs/focus';
-      import LatStore from './latstore.js';
-      import {
-        getDeviceNameHelper,
-        openMultiFilePicker,
-        generateJSONTree,
-        uploadWithSharedQueue,
-        processBatch,
-        isValidDirName,
-      } from './helpers.js';
+      import Store from './Store.js';
+      import { getDeviceNameHelper, openMultiFilePicker, isValidDirName } from './helpers.js';
       const password = 'password'; // In real app, use proper auth
       const API_ENDPOINT = 'http://localhost:8787/api';
 
@@ -39,36 +32,49 @@
         // draggingListener: false,
         // dragActive: false,
         emailNotifications: true,
-        cwd: null,
+        store: new Store(),
+        cwd: '/',
+        cwdFullPathArray: [{ name: '/', id: null }],
         cwdId: null,
         localData: new Map(),
         localDataEtag: null,
         cwdFiles: [],
         uploadingFiles: [],
         uploadValue: 0,
-        cwdFullPath: '/',
-        latStore: new LatStore(),
         async init() {
           if (this.isLoggedIn && this.username && this.devicename) {
             console.log('User is logged in as', this.username, 'on device:', this.devicename);
-            const loggedIn = await this.latStore.login(this.username, this.devicename, 'password', API_ENDPOINT);
+            const loggedIn = await this.store.login(this.username, this.devicename, 'password', API_ENDPOINT);
             if (loggedIn) {
               this.isLoggedIn = true;
-              this.authToken = this.latStore.authToken;
-              this.cwd = '/';
-              this.cwdFiles = this.latStore.getFilesInDir(this.cwdId);
+              this.authToken = this.store.authToken;
+              const hashId = window.location.hash.slice(1);
+              if (hashId) {
+                this.cwdId = hashId;
+                await this.changeCWD(hashId);
+              } else {
+                this.cwdId = null;
+                this.cwd = '/';
+                this.cwdFullPathArray = [{ name: '/', id: null }];
+                // window.location.hash = this.cwdId || '';
+                this.cwdFiles = this.store.getFilesInDir(this.cwdId);
+              }
             } else {
-              await this.latStore.logout();
+              await this.store.logout();
               this.isLoggedIn = false;
               this.username = '';
               this.authToken = '';
               this.userId = '';
             }
+            window.addEventListener('hashchange', () => {
+              const hashId = window.location.hash.slice(1);
+              if (hashId) this.changeCWD(hashId);
+            });
           }
         },
         async register(newUsername) {
           console.log('Creating new user:', newUsername);
-          const registerResp = await this.latStore.register(newUsername, this.devicename, password, API_ENDPOINT);
+          const registerResp = await this.store.register(newUsername, this.devicename, 'password', API_ENDPOINT);
           if (registerResp.ok) {
             await this.login(newUsername);
           } else {
@@ -77,11 +83,11 @@
         },
         async login(username) {
           console.log('Logging in user:', username);
-          const loggedIn = await this.latStore.login(username, this.devicename, password, API_ENDPOINT);
+          const loggedIn = await this.store.login(username, this.devicename, 'password', API_ENDPOINT);
           if (loggedIn) {
             this.username = username;
             this.isLoggedIn = true;
-            this.authToken = this.latStore.authToken;
+            this.authToken = this.store.authToken;
           } else {
             this.isLoggedIn = false;
           }
@@ -89,16 +95,19 @@
         },
         async logout() {
           this.username = '';
-          await this.latStore.logout();
+          await this.store.logout();
           this.authToken = '';
           this.isLoggedIn = false;
         },
         async addNewDir() {
           const dirName = prompt('Enter new directory name:');
+          if (!dirName || dirName.trim() === '') {
+            return;
+          }
           if (isValidDirName(dirName.trim())) {
-            const res = await this.latStore.addNewDir(this.cwdId, dirName.trim());
+            const res = await this.store.addNewDir(this.cwdId, dirName.trim());
             if (res) {
-              this.cwdFiles = this.latStore.getFilesInDir(this.cwdId);
+              this.cwdFiles = this.store.getFilesInDir(this.cwdId);
             } else {
               alert('Failed to create directory. It might already exist.');
             }
@@ -106,6 +115,28 @@
             alert('Invalid directory name. Please avoid special characters like / \\ ? % * : | " < > .');
           }
         },
+
+        async removeEntry(fileId) {
+          if (confirm('Are you sure? This action cannot be undone.')) {
+            const res = await this.store.deleteFile(fileId);
+            if (res) {
+              console.log('Entry deleted successfully.');
+              this.cwdFiles = this.store.getFilesInDir(this.cwdId);
+            } else {
+              alert('Failed to delete the entry.');
+            }
+          }
+        },
+
+        async changeCWD(newCwdId) {
+          window.location.hash = newCwdId || '';
+
+          this.cwdId = newCwdId;
+          this.cwdFullPathArray = this.store.getFullPathByIdArray(newCwdId);
+          this.cwd = this.cwdFullPathArray[this.cwdFullPathArray.length - 1]?.name || '/';
+          this.cwdFiles = this.store.getFilesInDir(newCwdId);
+        },
+
         async openPicker() {
           if (window.showDirectoryPicker) {
             // --- Modern API: Directory Picker ---
@@ -114,24 +145,10 @@
 
               async function processDirectory(dirHandle, parentId = null) {
                 console.warn('1. Processing directory:', dirHandle.name);
-                // const dirId = generateUUID();
-                // const entry = createEntry(dirId, parentId, dirHandle.name, 0, 'directory');
-                // ymap1.set(dirId, entry);
-
-                // for await (const handle of dirHandle.values()) {
-                //   if (handle.kind === 'file') {
-                //     const file = await handle.getFile();
-                //     const fileId = generateUUID();
-                //     const fileEntry = createEntry(fileId, dirId, handle.name, file.size, 'file');
-                //     ymap1.set(fileId, fileEntry);
-                //   } else if (handle.kind === 'directory') {
-                //     await processDirectory(handle, dirId);
-                //   }
-                // }
               }
 
               await processDirectory(dirHandle, null);
-              console.log('Files loaded (directory mode):', ymap1.size, generateJSONTree(ymap1));
+              // console.log('Files loaded (directory mode):', ymap1.size, generateJSONTree(ymap1));
             } catch (err) {
               console.error('Directory selection cancelled or error:', err);
             }
@@ -139,52 +156,14 @@
             // --- Fallback: Multi-file picker ---
             openMultiFilePicker(async filesList => {
               try {
-                // const filesCount = selectedFiles.length;
-                uploadResults = [];
-                try {
-                  // Upload each file
-                  const uploadPromise = await uploadWithSharedQueue(filesList, workers, {
-                    endpoint: API_ENDPOINT + '/upload',
-                    authToken: this.authToken,
-                    userId: this.userId,
-                    chunkSize: CHUNK_SIZE,
-                  });
-                  // Wait for all uploads
-                  uploadResults = uploadPromise;
-
-                  // Display results
-                  console.log('Upload Results:', uploadResults);
-
-                  const successful = [];
-                  const failed = [];
-
-                  // Process results from each file
-                  for (const [fileId, fileData] of Object.entries(uploadResults)) {
-                    if (fileData.errors && fileData.errors.length > 0) {
-                      failed.push({
-                        fileName: fileData.fileName,
-                        errors: fileData.errors,
-                      });
-                    } else {
-                      successful.push({
-                        fileName: fileData.fileName,
-                        fileId: fileId,
-                        chunks: fileData.chunks,
-                        totalChunks: fileData.totalChunks,
-                      });
-                    }
-                  }
-
-                  if (successful.length === 0 && failed.length === 0) {
-                    return;
-                  }
-                } catch (error) {
-                  console.error(`Upload failed: ${error.message}`);
-                } finally {
-                  console.log('Upload process completed.');
-                }
+                // Upload each file
+                const { successful, failed } = await this.store.uploadFilelist(filesList, this.cwdId);
+                // Wait for all uploads
+                console.log(`Upload complete. Successful: ${successful.length}, Failed: ${failed.length}`);
               } catch (err) {
-                console.error('Multi-file selection error:', err);
+                console.error('Multi-file selection error:', err.message);
+              } finally {
+                console.log('Upload process completed.');
               }
             });
           }
@@ -359,26 +338,28 @@
           </header>
           <div class="relative max-w-[100vw] px-6 pb-16 xl:pe-2">
             <!-- content goes here -->
-            <div class="breadcrumbs text-sm" style="overflow-x: visible">
+            <div class="breadcrumbs max-w-xs text-sm" style="overflow: visible">
               <ul>
-                <li>
-                  <a>
-                    <svg
-                      xmlns="http://www.w3.org/2000/svg"
-                      fill="none"
-                      viewBox="0 0 24 24"
-                      class="h-4 w-4 stroke-current"
-                    >
-                      <path
-                        stroke-linecap="round"
-                        stroke-linejoin="round"
-                        stroke-width="2"
-                        d="M3 7v10a2 2 0 002 2h14a2 2 0 002-2V9a2 2 0 00-2-2h-6l-2-2H5a2 2 0 00-2 2z"
-                      ></path>
-                    </svg>
-                    <span x-text="$store.account.cwdFullPath"></span>
-                  </a>
-                </li>
+                <template x-for="(part, index) in $store.account.cwdFullPathArray" :key="index">
+                  <li>
+                    <a @click="await $store.account.changeCWD(part.id)" class="cursor-pointer">
+                      <svg
+                        xmlns="http://www.w3.org/2000/svg"
+                        fill="none"
+                        viewBox="0 0 24 24"
+                        class="h-4 w-4 stroke-current"
+                      >
+                        <path
+                          stroke-linecap="round"
+                          stroke-linejoin="round"
+                          stroke-width="2"
+                          d="M3 7v10a2 2 0 002 2h14a2 2 0 002-2V9a2 2 0 00-2-2h-6l-2-2H5a2 2 0 00-2 2z"
+                        ></path>
+                      </svg>
+                      <span x-text="part.name"></span>
+                    </a>
+                  </li>
+                </template>
                 <!-- <li>
                 <a>
                   <svg
@@ -523,8 +504,12 @@
                     <button class="btn btn-ghost text-error"><kbd class="kbd kbd-sm">esc</kbd> Discard</button>
                   </li> -->
                 <template x-for="file in $store.account.cwdFiles" :key="file.id">
-                  <li class="list-row hover:bg-base-200 hover:shadow-sm cursor-pointer">
-                    <div>
+                  <li
+                    class="list-row hover:bg-base-200 hover:shadow-sm cursor-pointer"
+                    @click="if (file.type === 'inode/directory') await $store.account.changeCWD(file.id)"
+                    :title="file.name"
+                  >
+                    <div x-show="file.type === 'inode/directory'">
                       <svg
                         xmlns="http://www.w3.org/2000/svg"
                         fill="none"
@@ -539,11 +524,30 @@
                         ></path>
                       </svg>
                     </div>
+                    <div x-show="file.type !== 'inode/directory'">
+                      <svg
+                        class="w-6 h-6 text-gray-800 dark:text-white"
+                        aria-hidden="true"
+                        xmlns="http://www.w3.org/2000/svg"
+                        width="24"
+                        height="24"
+                        fill="none"
+                        viewBox="0 0 24 24"
+                      >
+                        <path
+                          stroke="currentColor"
+                          stroke-linecap="round"
+                          stroke-linejoin="round"
+                          stroke-width="2"
+                          d="M5 17v-5h1.5a1.5 1.5 0 1 1 0 3H5m12 2v-5h2m-2 3h2M5 10V7.914a1 1 0 0 1 .293-.707l3.914-3.914A1 1 0 0 1 9.914 3H18a1 1 0 0 1 1 1v6M5 19v1a1 1 0 0 0 1 1h12a1 1 0 0 0 1-1v-1M10 3v4a1 1 0 0 1-1 1H5m6 4v5h1.375A1.627 1.627 0 0 0 14 15.375v-1.75A1.627 1.627 0 0 0 12.375 12H11Z"
+                        />
+                      </svg>
+                    </div>
                     <div>
                       <div><span x-text="file.name"></span></div>
-                      <div class="text-xs uppercase font-semibold opacity-60">...</div>
+                      <div class="text-xs uppercase font-semibold opacity-60" x-text="file.type">...</div>
                     </div>
-                    <button class="btn btn-square btn-ghost">
+                    <!-- <button class="btn btn-square btn-ghost">
                       <svg class="size-[1.2em]" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24">
                         <g
                           stroke-linejoin="round"
@@ -555,20 +559,27 @@
                           <path d="M6 3L20 12 6 21 6 3z"></path>
                         </g>
                       </svg>
-                    </button>
-                    <button class="btn btn-square btn-ghost">
-                      <svg class="size-[1.2em]" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24">
-                        <g
-                          stroke-linejoin="round"
-                          stroke-linecap="round"
-                          stroke-width="2"
-                          fill="none"
+                    </button> -->
+                    <button
+                      class="btn btn-square btn-ghost"
+                      @click="$store.account.removeEntry(file.id); $event.stopPropagation(); $event.preventDefault();"
+                    >
+                      <svg
+                        class="size-[1.2em]"
+                        aria-hidden="true"
+                        xmlns="http://www.w3.org/2000/svg"
+                        width="24"
+                        height="24"
+                        fill="none"
+                        viewBox="0 0 24 24"
+                      >
+                        <path
                           stroke="currentColor"
-                        >
-                          <path
-                            d="M19 14c1.49-1.46 3-3.21 3-5.5A5.5 5.5 0 0 0 16.5 3c-1.76 0-3 .5-4.5 2-1.5-1.5-2.74-2-4.5-2A5.5 5.5 0 0 0 2 8.5c0 2.3 1.5 4.05 3 5.5l7 7Z"
-                          ></path>
-                        </g>
+                          stroke-linecap="round"
+                          stroke-linejoin="round"
+                          stroke-width="2"
+                          d="M5 7h14m-9 3v8m4-8v8M10 3h4a1 1 0 0 1 1 1v3H9V4a1 1 0 0 1 1-1ZM6 7h12v13a1 1 0 0 1-1 1H7a1 1 0 0 1-1-1V7Z"
+                        />
                       </svg>
                     </button>
                   </li>
