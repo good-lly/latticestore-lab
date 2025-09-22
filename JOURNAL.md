@@ -1,5 +1,34 @@
 # Build Journal
 
+### Day 9/10 - 2025-09-18/22 - Polish, polish, polish, fix, fix, fix
+
+The Map-based approach was (mostly) half-baked. Recent rewrite introduces a proper (hopefully) Virtual File System (VFS) with:
+Flat node storage (Map) for O(1) lookups
+Children index for O(1) directory listing
+Path caching for instant breadcrumb rendering
+Type/name indexes for fast search and filtering [wip]
+
+Why this matters:
+Before: Loop through all nodes to find children. O(n) nightmare at scale.
+Now: Direct Set lookup. O(1). Works with 100,000 files.
+
+Every operation (move, delete, rename) maintains these indexes. Delete a folder? BFS traversal removes all descendants in one pass. Move a folder? Invalidates path cache for entire branch.
+What actually works now:
+
+Directory navigation with URL hashes (#folder-id)
+Create/delete folders (with validation)
+Breadcrumb navigation
+File uploads go to current directory
+Root file properly encrypted with user's master key
+
+Architecture shift:
+
+Redis: Only auth tokens and user metadata
+S3: Everything else (files + encrypted root file)
+VFS: Client-side state management
+
+Tomorrow: File downloads and directory operations in the UI. Then, demo to a few people. Then, rest. Then, figure out how to fund this properly.
+
 ### Day 8 - 2025-09-16 - Directories work. Conflict resolution works. UI barely works.
 
 Shipped:
