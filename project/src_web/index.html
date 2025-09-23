@@ -137,6 +137,10 @@
           this.cwdFiles = this.store.getFilesInDir(newCwdId);
         },
 
+        async downloadFile(fileId) {
+          console.log('Downloading file with ID:', fileId);
+        },
+
         async openPicker() {
           if (window.showDirectoryPicker) {
             // --- Modern API: Directory Picker ---
@@ -203,7 +207,7 @@
             <form method="dialog" x-data="{ newUsername: '' }" x-on:submit="event.preventDefault();">
               <fieldset class="fieldset w-full">
                 <legend class="fieldset-legend w-full">Fill in your email</legend>
-                <input type="email" class="input w-full" placeholder="eg. tim@apple.com" x-model="newUsername" />
+                <input type="text" class="input w-full" placeholder="eg. tim@apple.com" x-model="newUsername" />
                 <!-- <label class="label">
                   <input type="checkbox" checked="checked" class="checkbox" />
                   Your email will only be used to notify you of important service changes. We do not share or sell your
@@ -401,7 +405,7 @@
                   </div>
                   <ul tabindex="0" class="dropdown-content menu bg-base-100 rounded-box z-1 w-52 p-2 shadow-sm">
                     <li class="w-full">
-                      <button aria-label="New directory" accesskey="n" @click="$store.account.addNewDir()">
+                      <button aria-label="Add directory" accesskey="n" @click="$store.account.addNewDir()">
                         <svg
                           xmlns="http://www.w3.org/2000/svg"
                           fill="none"
@@ -415,7 +419,7 @@
                             d="M3 7v10a2 2 0 002 2h14a2 2 0 002-2V9a2 2 0 00-2-2h-6l-2-2H5a2 2 0 00-2 2z"
                           ></path>
                         </svg>
-                        New directory
+                        Add directory
                       </button>
                     </li>
                     <li class="w-full" x-show="!!window.showDirectoryPicker">
@@ -505,8 +509,9 @@
                   </li> -->
                 <template x-for="file in $store.account.cwdFiles" :key="file.id">
                   <li
+                    draggable="true"
                     class="list-row hover:bg-base-200 hover:shadow-sm cursor-pointer"
-                    @click="if (file.type === 'inode/directory') await $store.account.changeCWD(file.id)"
+                    @click="if (file.type === 'inode/directory') { await $store.account.changeCWD(file.id) } else { await $store.account.downloadFile(file.id) }"
                     :title="file.name"
                   >
                     <div x-show="file.type === 'inode/directory'">
