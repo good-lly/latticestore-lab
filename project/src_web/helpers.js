@@ -222,6 +222,7 @@ export const generateJSONTree = ymap => {
 };
 
 export async function downloadAndDecryptFile(fileKey, keyData, config, worker) {
+  // console.warn('Downloading file with key:', fileKey, keyData, config);
   const { endpoint, authToken, userId } = config;
   return new Promise((resolve, reject) => {
     const messageHandler = e => {

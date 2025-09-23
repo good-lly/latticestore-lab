@@ -482,6 +482,55 @@ class Store {
     await this.updateRootFile();
     return { successful, failed };
   }
+
+  async downloadFile(fileId, options) {
+    if (!this.isLoggedIn || !this.userId || !this.endpoint || !this.authToken || !this.workers[0]) {
+      console.error('Cannot download file: Missing required information');
+      return { ok: false, error: 'User not logged in or missing information' };
+    }
+
+    const node = this.getNodeById(fileId);
+    if (!node || !node.chunks || node.chunks.length === 0 || node.type === 'inode/directory') {
+      console.error('File not found or has no chunks to download');
+      return { ok: false, error: 'File not found or has no chunks to download' };
+    }
+    try {
+      console.log('Downloading file:', node.name, 'with', node.chunks.length, 'chunks');
+      // const { showProgress = true, onProgress = null } = options;
+      // let receivedBytes = 0;
+      // const totalBytes = node.size || 0;
+      const fileKey = new Uint8Array(Object.values(node.keyData));
+      const resultArray = await Promise.all(
+        node.chunks.map((chunk, i) =>
+          downloadAndDecryptFile(
+            chunk.fileId + '_' + chunk.chunkIndex,
+            fileKey,
+            { endpoint: this.endpoint, authToken: this.authToken, userId: this.userId },
+            this.workers[i % this.workers.length],
+          ),
+        ),
+      );
+      console.log('Downloaded and decrypted all chunks for file:', node.name, resultArray);
+      // // Combine all blobs into one
+      const blobs = resultArray.map(res => res.blob);
+      const blob = new Blob(blobs, { type: node.type });
+
+      // // Trigger file download in browser
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = node.name;
+      document.body.appendChild(a);
+      a.click();
+      a.remove();
+      URL.revokeObjectURL(url);
+
+      return { ok: true };
+    } catch (error) {
+      console.error('Error downloading file:', error);
+      return { ok: false, error: error.message };
+    }
+  }
 }
 
 export default Store;

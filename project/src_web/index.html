@@ -139,6 +139,10 @@
 
         async downloadFile(fileId) {
           console.log('Downloading file with ID:', fileId);
+          const result = await this.store.downloadFile(fileId);
+          if (!result.ok) {
+            alert('Failed to download file: ' + result.message);
+          }
         },
 
         async openPicker() {
