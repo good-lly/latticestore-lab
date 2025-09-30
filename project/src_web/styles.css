@@ -45,7 +45,7 @@
   display: none !important;
 }
 
-dialog {
+div.modal {
   background-image: url('/public/bg2.png');
   background-size: cover;
 }

@@ -531,6 +531,231 @@ class Store {
       return { ok: false, error: error.message };
     }
   }
+
+  async startStream(fileId, videoElement) {
+    if (!this.isLoggedIn || !this.userId || !this.endpoint || !this.authToken || !this.workers?.[0]) {
+      console.error('Cannot start stream: Missing required information');
+      return { ok: false, error: 'User not logged in or missing information' };
+    }
+
+    const node = this.getNodeById(fileId);
+    if (!node || !node.chunks || node.chunks.length === 0 || node.type === 'inode/directory') {
+      console.error('File not found or has no chunks to stream');
+      return { ok: false, error: 'File not found or has no chunks to stream' };
+    }
+
+    try {
+      const fileKey = new Uint8Array(Object.values(node.keyData));
+
+      // First, check if the file is suitable for MSE
+      const firstChunkInfo = node.chunks[0];
+      const { blob: firstBlob } = await downloadAndDecryptFile(
+        firstChunkInfo.fileId + '_' + firstChunkInfo.chunkIndex,
+        fileKey,
+        { endpoint: this.endpoint, authToken: this.authToken, userId: this.userId },
+        this.workers[0],
+      );
+
+      const firstChunk = await firstBlob.arrayBuffer();
+      const isFragmented = this.checkIfFragmentedMP4(firstChunk);
+
+      if (!isFragmented) {
+        console.log('File is not fragmented MP4, using blob approach');
+        return this.streamWithBlob(node, videoElement, fileKey, firstChunk);
+      }
+
+      console.log('File is fragmented MP4, using MediaSource');
+      const mediaSource = new MediaSource();
+      videoElement.src = URL.createObjectURL(mediaSource);
+
+      return new Promise((resolve, reject) => {
+        mediaSource.addEventListener('sourceopen', async () => {
+          try {
+            // Try different codec strings
+            const codecStrings = [
+              'video/mp4; codecs="avc1.42E01E, mp4a.40.2"', // H.264 + AAC
+              'video/mp4; codecs="avc1.4D401E, mp4a.40.2"', // H.264 Main + AAC
+              'video/mp4; codecs="avc1.64001E, mp4a.40.2"', // H.264 High + AAC
+              'video/mp4; codecs="avc1.42E01E"', // H.264 only
+              'video/mp4; codecs="mp4a.40.2"', // AAC only
+            ];
+
+            let sourceBuffer = null;
+
+            // Try to find supported codec
+            for (const codec of codecStrings) {
+              if (MediaSource.isTypeSupported(codec)) {
+                console.log('Using codec:', codec);
+                sourceBuffer = mediaSource.addSourceBuffer(codec);
+                break;
+              }
+            }
+
+            if (!sourceBuffer) {
+              throw new Error('No supported codec found');
+            }
+
+            const queue = [];
+            let isAppending = false;
+
+            const processQueue = () => {
+              if (!isAppending && !sourceBuffer.updating && queue.length > 0) {
+                isAppending = true;
+                const chunk = queue.shift();
+                try {
+                  sourceBuffer.appendBuffer(chunk);
+                } catch (e) {
+                  console.error('Failed to append buffer:', e);
+                  isAppending = false;
+                }
+              }
+            };
+
+            sourceBuffer.addEventListener('updateend', () => {
+              isAppending = false;
+              processQueue();
+            });
+
+            // Append first chunk
+            queue.push(new Uint8Array(firstChunk));
+            processQueue();
+
+            // Load remaining chunks
+            for (let i = 1; i < node.chunks.length; i++) {
+              const chunkInfo = node.chunks[i];
+              console.log(`Loading chunk ${i + 1}/${node.chunks.length}`);
+
+              const { blob } = await downloadAndDecryptFile(
+                chunkInfo.fileId + '_' + chunkInfo.chunkIndex,
+                fileKey,
+                { endpoint: this.endpoint, authToken: this.authToken, userId: this.userId },
+                this.workers[i % this.workers.length],
+              );
+
+              const arrayBuffer = await blob.arrayBuffer();
+              queue.push(new Uint8Array(arrayBuffer));
+              processQueue();
+
+              // Start playback after a few chunks
+              if (i === 2 && videoElement.paused) {
+                videoElement.play().catch(e => console.log('Autoplay blocked:', e));
+              }
+            }
+
+            // Wait for queue to empty
+            while (queue.length > 0 || isAppending) {
+              await new Promise(resolve => setTimeout(resolve, 100));
+            }
+
+            if (mediaSource.readyState === 'open') {
+              mediaSource.endOfStream();
+            }
+
+            resolve({ ok: true });
+          } catch (error) {
+            console.error('MediaSource streaming failed:', error);
+            mediaSource.endOfStream('network');
+            reject(error);
+          }
+        });
+      });
+    } catch (error) {
+      console.error('Error starting stream:', error);
+      return { ok: false, error: error.message };
+    }
+  }
+
+  // Check if MP4 is fragmented
+  checkIfFragmentedMP4(arrayBuffer) {
+    const view = new DataView(arrayBuffer);
+    const decoder = new TextDecoder();
+
+    // Look for MP4 box signatures
+    let offset = 0;
+    while (offset < Math.min(arrayBuffer.byteLength, 1024)) {
+      if (offset + 8 > arrayBuffer.byteLength) break;
+
+      const size = view.getUint32(offset);
+      const type = decoder.decode(new Uint8Array(arrayBuffer, offset + 4, 4));
+
+      console.log(`Found box: ${type} at offset ${offset}`);
+
+      // Fragmented MP4s have moof (movie fragment) boxes
+      if (type === 'moof' || type === 'mvex') {
+        return true;
+      }
+
+      // Regular MP4s have mdat after moov
+      if (type === 'mdat' && offset > 100) {
+        return false;
+      }
+
+      offset += size || 8;
+    }
+
+    return false;
+  }
+
+  // Fallback blob streaming for non-fragmented MP4
+  async streamWithBlob(node, videoElement, fileKey, firstChunk) {
+    console.log('Starting simple progressive streaming');
+
+    try {
+      // Only load first 20MB (enough to start playback)
+      const bytesPerChunk = firstChunk.byteLength;
+      const chunksFor20MB = Math.ceil((20 * 1024 * 1024) / bytesPerChunk);
+      const initialChunks = Math.min(chunksFor20MB, node.chunks.length);
+
+      console.log(`Loading first ${initialChunks} chunks of ${node.chunks.length} total`);
+
+      const chunks = [firstChunk];
+
+      // Load initial chunks
+      for (let i = 1; i < initialChunks; i++) {
+        const chunkInfo = node.chunks[i];
+        console.log(`Loading chunk ${i + 1}/${initialChunks}`);
+
+        const { blob } = await downloadAndDecryptFile(
+          chunkInfo.fileId + '_' + chunkInfo.chunkIndex,
+          fileKey,
+          { endpoint: this.endpoint, authToken: this.authToken, userId: this.userId },
+          this.workers[i % this.workers.length],
+        );
+
+        chunks.push(await blob.arrayBuffer());
+      }
+
+      // Create blob and play
+      const partialBlob = new Blob(chunks, { type: 'video/mp4' });
+      const url = URL.createObjectURL(partialBlob);
+
+      console.log(`Created partial blob with ${chunks.length} chunks, size: ${partialBlob.size} bytes`);
+
+      videoElement.src = url;
+      videoElement.controls = true;
+
+      videoElement.addEventListener('loadedmetadata', () => {
+        console.log('Metadata loaded, duration:', videoElement.duration);
+        videoElement.play().catch(e => console.log('Click play button to start'));
+      });
+
+      videoElement.addEventListener('error', e => {
+        const err = videoElement.error;
+        if (err?.code === 3) {
+          console.log('Note: This is a partial file, seeking beyond loaded content will fail');
+        }
+      });
+
+      // Show a message to user
+      console.warn(`⚠️ Only first ${initialChunks} chunks loaded. Full video has ${node.chunks.length} chunks.`);
+      console.log('This is a preview. Implement full streaming for complete playback.');
+
+      return { ok: true, partial: true };
+    } catch (error) {
+      console.error('Streaming failed:', error);
+      return { ok: false, error: error.message };
+    }
+  }
 }
 
 export default Store;
