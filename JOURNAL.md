@@ -1,5 +1,20 @@
 # Build Journal
 
+### Day 14 - 2025-10-04 - Rewrite and polish SDK to typescript + unit tests
+
+A lot of messy JS needs to be cleaned up. Started rewriting the SDK in TypeScript with proper types, interfaces, and unit tests. This will make future development and maintenance much easier.
+I feel like shooting myself in the foot every time I start another rewrite, but this time it's worth it. The core logic is starting to stabilize, and having a solid foundation is crucial before adding more features. Tomorrow will follow up with more features - hopefully finish the login, adding new devices and registration flow with proper error handling and test coverage. Stay tuned!
+
+....
+
+### Day 11 to 13ish - 2025-09-23 to 2025-10-02 - File downloads, directory operations, streaming video and demo.
+
+We can upload files into directories, navigate directories, and download files. Even tried to stream encrypted video files directly from S3. Works on my machine™ - but only on MP4 (sorry, hardcoded MIME type).
+
+Received draft from cryptographer Ondrej. Next steps: rescope everything. Integrating groups and sharing is a massive undertaking. Need to figure out how to fund this properly - so right now, focusing on the core experience: personal encrypted file storage and sync among devices. Need to get this demoable to a few people, then rest, then figure out funding.
+
+Also a bit slacking on the journal. Will try to catch up.
+
 ### Day 9/10 - 2025-09-18/22 - Polish, polish, polish, fix, fix, fix
 
 The Map-based approach was (mostly) half-baked. Recent rewrite introduces a proper (hopefully) Virtual File System (VFS) with:

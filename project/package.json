@@ -4,22 +4,22 @@
   "main": "index.js",
   "scripts": {
     "dev": "vite build --watch & wrangler dev",
-    "test": "echo \"Error: no test specified\" && exit 1"
+    "test": "vitest"
   },
   "keywords": [],
   "type": "module",
   "author": "",
   "description": "",
   "devDependencies": {
-    "@tailwindcss/vite": "4.1.13",
-    "daisyui": "5.1.14",
-    "hono": "4.9.8",
-    "tailwindcss": "4.1.13",
-    "vite": "7.1.7",
-    "alpinejs": "3.15.0",
     "@alpinejs/focus": "3.15.0",
     "@alpinejs/persist": "3.15.0",
-    "wrangler": "4.38.0"
+    "@tailwindcss/vite": "4.1.14",
+    "alpinejs": "3.15.0",
+    "daisyui": "5.1.26",
+    "hono": "4.9.9",
+    "tailwindcss": "4.1.14",
+    "vite": "7.1.9",
+    "wrangler": "4.41.0"
   },
   "prettier": {
     "bracketSpacing": true,
@@ -34,7 +34,10 @@
   },
   "dependencies": {
     "@keyv/redis": "5.1.2",
+    "@noble/post-quantum": "^0.5.2",
     "keyv-upstash": "1.0.8",
-    "s3mini": "0.5.0"
+    "s3mini": "0.5.0",
+    "tsc": "^2.0.4",
+    "vitest": "3.2.4"
   }
 }
