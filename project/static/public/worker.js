@@ -53,6 +53,7 @@ async function handleBatchUpload({ chunks, config }) {
       self.postMessage({
         type: 'progress',
         fileName: chunk.fileName,
+        fileType: chunk.fileType,
         chunkIndex: chunk.chunkIndex,
         totalChunks: chunk.totalChunks,
         status: 'uploading',
@@ -62,6 +63,7 @@ async function handleBatchUpload({ chunks, config }) {
       const uploadResult = await uploadWithRetry(processedData, config.endpoint, config.authToken, config.userId, {
         fileId: chunk.fileId,
         fileName: chunk.fileName,
+        fileType: chunk.fileType,
         chunkIndex: chunk.chunkIndex,
         totalChunks: chunk.totalChunks,
       });
@@ -70,6 +72,7 @@ async function handleBatchUpload({ chunks, config }) {
       if (!results[chunk.fileId]) {
         results[chunk.fileId] = {
           fileName: chunk.fileName,
+          fileType: chunk.fileType,
           fileSize: chunk.fileSize,
           totalChunks: chunk.totalChunks,
           keyData: chunk.keyData,
@@ -82,6 +85,7 @@ async function handleBatchUpload({ chunks, config }) {
       self.postMessage({
         type: 'progress',
         fileName: chunk.fileName,
+        fileType: chunk.fileType,
         chunkIndex: chunk.chunkIndex,
         totalChunks: chunk.totalChunks,
         status: 'completed',
@@ -91,6 +95,7 @@ async function handleBatchUpload({ chunks, config }) {
       if (!results[chunk.fileId]) {
         results[chunk.fileId] = {
           fileName: chunk.fileName,
+          fileType: chunk.fileType,
           fileSize: chunk.fileSize,
           totalChunks: chunk.totalChunks,
           chunks: [],
@@ -106,6 +111,7 @@ async function handleBatchUpload({ chunks, config }) {
       self.postMessage({
         type: 'progress',
         fileName: chunk.fileName,
+        fileType: chunk.fileType,
         chunkIndex: chunk.chunkIndex,
         totalChunks: chunk.totalChunks,
         status: 'failed',

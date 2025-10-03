@@ -41,6 +41,7 @@
         cwdFiles: [],
         uploadingFiles: [],
         uploadValue: 0,
+        fileProgressMap: new Map(),
         async init() {
           if (this.isLoggedIn && this.username && this.devicename) {
             console.log('User is logged in as', this.username, 'on device:', this.devicename);
@@ -72,7 +73,7 @@
             });
           }
         },
-        async register(newUsername) {
+        async register(newUsername, password) {
           console.log('Creating new user:', newUsername);
           const registerResp = await this.store.register(newUsername, this.devicename, 'password', API_ENDPOINT);
           if (registerResp.ok) {
@@ -81,7 +82,7 @@
             alert(registerResp.message);
           }
         },
-        async login(username) {
+        async login(username, password) {
           console.log('Logging in user:', username);
           const loggedIn = await this.store.login(username, this.devicename, 'password', API_ENDPOINT);
           if (loggedIn) {
@@ -152,35 +153,82 @@
         },
 
         async openPicker() {
-          if (window.showDirectoryPicker) {
-            // --- Modern API: Directory Picker ---
+          // if (window.showDirectoryPicker) {
+          //   // --- Modern API: Directory Picker ---
+          //   try {
+          //     const dirHandle = await window.showDirectoryPicker();
+
+          //     async function processDirectory(dirHandle, parentId = null) {
+          //       console.warn('1. Processing directory:', dirHandle.name);
+          //     }
+
+          //     await processDirectory(dirHandle, null);
+          //     // console.log('Files loaded (directory mode):', ymap1.size, generateJSONTree(ymap1));
+          //   } catch (err) {
+          //     console.error('Directory selection cancelled or error:', err);
+          //   }
+          // } else {
+          // --- Fallback: Multi-file picker ---
+          openMultiFilePicker(async filesList => {
             try {
-              const dirHandle = await window.showDirectoryPicker();
+              // Initialize progress tracking
+              this.uploadingFiles = Array.from(filesList).map(f => ({
+                name: f.name,
+                completed: 0,
+                total: 0,
+                status: 'pending',
+              }));
+              this.fileProgressMap.clear();
+              // Upload each file
+              const { successful, failed } = await this.store.uploadFilelist(filesList, this.cwdId, progress => {
+                const key = progress.fileName;
 
-              async function processDirectory(dirHandle, parentId = null) {
-                console.warn('1. Processing directory:', dirHandle.name);
-              }
+                if (!this.fileProgressMap.has(key)) {
+                  this.fileProgressMap.set(key, {
+                    completed: 0,
+                    total: progress.totalChunks,
+                    status: 'uploading',
+                  });
+                }
 
-              await processDirectory(dirHandle, null);
-              // console.log('Files loaded (directory mode):', ymap1.size, generateJSONTree(ymap1));
+                const file = this.fileProgressMap.get(key);
+
+                if (progress.status === 'completed') {
+                  file.completed++;
+                } else if (progress.status === 'failed') {
+                  file.status = 'error';
+                  file.error = progress.error;
+                }
+
+                // Update UI
+                const fileIndex = this.uploadingFiles.findIndex(f => f.name === key);
+                if (fileIndex !== -1) {
+                  this.uploadingFiles[fileIndex].completed = file.completed;
+                  this.uploadingFiles[fileIndex].total = file.total;
+                  this.uploadingFiles[fileIndex].status = file.status;
+                  this.uploadingFiles[fileIndex].error = file.error;
+                }
+
+                // Update overall progress (first file)
+                if (fileIndex === 0) {
+                  this.uploadValue = Math.round((file.completed / file.total) * 100);
+                }
+              });
+              // Wait for all uploads
+              console.log(`Upload complete. Successful: ${successful.length}, Failed: ${failed.length}`);
             } catch (err) {
-              console.error('Directory selection cancelled or error:', err);
+              console.error('Multi-file selection error:', err.message);
+            } finally {
+              console.log('Upload process completed.');
+              this.cwdFiles = this.store.getFilesInDir(this.cwdId);
+              setTimeout(() => {
+                this.uploadingFiles = [];
+                this.uploadValue = 0;
+                this.fileProgressMap.clear();
+              }, 1200);
             }
-          } else {
-            // --- Fallback: Multi-file picker ---
-            openMultiFilePicker(async filesList => {
-              try {
-                // Upload each file
-                const { successful, failed } = await this.store.uploadFilelist(filesList, this.cwdId);
-                // Wait for all uploads
-                console.log(`Upload complete. Successful: ${successful.length}, Failed: ${failed.length}`);
-              } catch (err) {
-                console.error('Multi-file selection error:', err.message);
-              } finally {
-                console.log('Upload process completed.');
-              }
-            });
-          }
+          });
+          //}
         },
       });
       Alpine.start();
@@ -214,10 +262,26 @@
           <h3 class="text-lg font-bold">Let's get in!</h3>
           <!-- <p class="py-4">Document bitte</p> -->
           <div class="w-full">
-            <form method="dialog" x-data="{ newUsername: '' }" x-on:submit="event.preventDefault();">
+            <form method="dialog" x-data="{ newUsername: '', newPassword: '' }" x-on:submit="event.preventDefault();">
               <fieldset class="fieldset w-full">
                 <legend class="fieldset-legend w-full">Fill in your email</legend>
-                <input type="text" class="input w-full" placeholder="eg. tim@apple.com" x-model="newUsername" />
+                <input
+                  type="text"
+                  class="input w-full"
+                  placeholder="eg. tim@apple.com"
+                  required
+                  x-model="newUsername"
+                />
+                <legend class="fieldset-legend w-full pt-4">
+                  Password <small><a href="#">(* For temporary use only. Why?)</a></small>
+                </legend>
+                <input
+                  type="password"
+                  class="input w-full"
+                  placeholder="Enter your password"
+                  required
+                  x-model="newPassword"
+                />
                 <!-- <label class="label">
                   <input type="checkbox" checked="checked" class="checkbox" />
                   Your email will only be used to notify you of important service changes. We do not share or sell your
@@ -241,15 +305,15 @@
               </fieldset>
               <button
                 class="btn mt-5"
-                @click="await $store.account.login(newUsername.trim())"
-                :disabled="newUsername.trim().length === 0 || !$store.account.emailNotifications"
+                @click="await $store.account.login(newUsername.trim(), newPassword.trim())"
+                :disabled="newUsername.trim().length === 0 || !$store.account.emailNotifications || newPassword.trim().length === 0"
               >
                 Login
               </button>
               <button
                 class="btn mt-5"
-                @click="await $store.account.register(newUsername.trim())"
-                :disabled="newUsername.trim().length === 0 || !$store.account.emailNotifications"
+                @click="await $store.account.register(newUsername.trim(), newPassword.trim())"
+                :disabled="newUsername.trim().length === 0 || !$store.account.emailNotifications || newPassword.trim().length === 0"
               >
                 Registration
               </button>

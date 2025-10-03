@@ -269,6 +269,7 @@ function* generateAllChunks(files, chunkSize) {
         keyData,
         file, // Include file object for slicing
         fileName: file.name,
+        fileType: file.type,
         fileSize: file.size,
         chunkIndex: i,
         totalChunks,
@@ -281,7 +282,7 @@ function* generateAllChunks(files, chunkSize) {
   }
 }
 
-export async function uploadWithSharedQueue(files, workers, config) {
+export async function uploadWithSharedQueue(files, workers, config, onProgress) {
   const allChunks = [...generateAllChunks(files, config.chunkSize || CHUNK_SIZE)];
   const totalChunks = allChunks.length;
   const chunksPerWorker = Math.ceil(totalChunks / workers.length);
@@ -299,7 +300,9 @@ export async function uploadWithSharedQueue(files, workers, config) {
   }
 
   // Process all batches in parallel
-  const batchResults = await Promise.all(workerBatches.map(batch => processBatch(batch.worker, batch.chunks, config)));
+  const batchResults = await Promise.all(
+    workerBatches.map(batch => processBatch(batch.worker, batch.chunks, config, onProgress)),
+  );
 
   // Merge results from all workers
   const mergedResults = {};
@@ -324,10 +327,18 @@ export async function uploadWithSharedQueue(files, workers, config) {
   return mergedResults;
 }
 
-export async function processBatch(worker, chunks, config) {
+export async function processBatch(worker, chunks, config, onProgress) {
   return new Promise((resolve, reject) => {
     const messageHandler = e => {
-      if (e.data.type === 'complete') {
+      if (e.data.type === 'progress' && onProgress) {
+        onProgress({
+          fileName: e.data.fileName,
+          chunkIndex: e.data.chunkIndex,
+          totalChunks: e.data.totalChunks,
+          status: e.data.status,
+          error: e.data.error,
+        });
+      } else if (e.data.type === 'complete') {
         worker.removeEventListener('message', messageHandler);
         if (e.data.success) {
           resolve(e.data.data);

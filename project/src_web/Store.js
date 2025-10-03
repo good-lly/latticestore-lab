@@ -437,7 +437,7 @@ class Store {
   /**
    * Upload multiple files to storage
    */
-  async uploadFilelist(fileList, cwdId = null) {
+  async uploadFilelist(fileList, cwdId = null, onProgress = null) {
     let uploadPromise = await uploadWithSharedQueue(fileList, this.workers, {
       endpoint: this.endpoint,
       authToken: this.authToken,
