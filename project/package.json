@@ -15,11 +15,11 @@
     "@alpinejs/persist": "3.15.0",
     "@tailwindcss/vite": "4.1.14",
     "alpinejs": "3.15.0",
-    "daisyui": "5.1.26",
-    "hono": "4.9.9",
+    "daisyui": "5.1.27",
+    "hono": "4.9.10",
     "tailwindcss": "4.1.14",
     "vite": "7.1.9",
-    "wrangler": "4.41.0"
+    "wrangler": "4.42.0"
   },
   "prettier": {
     "bracketSpacing": true,
