@@ -179,15 +179,15 @@ describe('CryptoPQ', () => {
     });
   });
 
-  describe('ML-DSA 44 - Digital Signatures', () => {
+  describe('ML-DSA 87 - Digital Signatures', () => {
     describe('generateDsaKeys', () => {
       it('should generate valid DSA key pair', () => {
         const { secretKey, publicKey } = CryptoPQ.generateDsaKeys();
 
         expect(secretKey).toBeInstanceOf(Uint8Array);
         expect(publicKey).toBeInstanceOf(Uint8Array);
-        expect(secretKey.length).toBe(ML_DSA_SECRET_KEY_SIZE); // ML-DSA-44 secret key size
-        expect(publicKey.length).toBe(ML_DSA_PUBLIC_KEY_SIZE); // ML-DSA-44 public key size
+        expect(secretKey.length).toBe(ML_DSA_SECRET_KEY_SIZE); // ML-DSA-87 secret key size
+        expect(publicKey.length).toBe(ML_DSA_PUBLIC_KEY_SIZE); // ML-DSA-87 public key size
       });
 
       it('should generate different keys without seed', () => {
@@ -247,13 +247,12 @@ describe('CryptoPQ', () => {
         expect(sig1).not.toEqual(sig2);
       });
 
-      it('should handle empty message', () => {
+      it('should throw error for empty message', () => {
         const { secretKey } = CryptoPQ.generateDsaKeys();
         const emptyMessage = new Uint8Array(0);
 
-        const signature = CryptoPQ.sign(secretKey, emptyMessage);
-        expect(signature).toBeInstanceOf(Uint8Array);
-        expect(signature.length).toBe(ML_DSA_SIGNATURE_SIZE);
+        expect(() => CryptoPQ.sign(secretKey, emptyMessage)).toThrow(CryptoPQError);
+        expect(() => CryptoPQ.sign(secretKey, emptyMessage)).toThrow('Signing failed');
       });
 
       it('should handle large messages', () => {

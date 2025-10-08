@@ -1,3 +1,4 @@
+import { shake256 } from '@noble/hashes/sha3.js';
 export class CryptoUtilsError extends Error {
   constructor(
     message: string,
@@ -65,6 +66,51 @@ export class CryptoUtils {
       throw new CryptoUtilsError(
         `Hashing failed: ${error instanceof Error ? error.message : 'unknown error'}`,
         'HASHING_FAILED',
+      );
+    }
+  }
+
+  /**
+   * Derive two seeds from a single master seed using SHAKE256 (PQ-safe)
+   * SHAKE256 should provide 256-bit security (NIST Level 5)
+   */
+  static deriveSeeds(
+    masterSeed: Uint8Array,
+    context: string = 'lattice-store-v1',
+  ): { kemSeed: Uint8Array; dsaSeed: Uint8Array } {
+    // Add context for domain separation
+    const contextBytes = new TextEncoder().encode(context);
+    const input = new Uint8Array(contextBytes.length + masterSeed.length);
+    input.set(contextBytes);
+    input.set(masterSeed, contextBytes.length);
+
+    // SHAKE256 can output arbitrary length
+    const outputLength = 96; // 64 bytes for KEM + 32 bytes for DSA
+    const derived = this.letsShake256(input, outputLength);
+
+    return {
+      kemSeed: derived.slice(0, 64), // First 64 bytes
+      dsaSeed: derived.slice(64, 96), // Next 32 bytes
+    };
+  }
+
+  /**
+   * Computes SHAKE-256 hash of input data
+   * @param data - Data to hash (Uint8Array)
+   * @param outputLength - Desired output length in bytes
+   * @returns Hash as Uint8Array
+   * @throws {CryptoUtilsError} If hashing fails or outputLength is invalid
+   */
+  public static letsShake256(data: Uint8Array, outputLength: number): Uint8Array {
+    try {
+      if (outputLength <= 0) {
+        throw new CryptoUtilsError('Output length must be a positive integer', 'INVALID_OUTPUT_LENGTH');
+      }
+      return shake256(data, { dkLen: outputLength });
+    } catch (error) {
+      throw new CryptoUtilsError(
+        `SHAKE-256 hashing failed: ${error instanceof Error ? error.message : 'unknown error'}`,
+        'SHAKE256_HASHING_FAILED',
       );
     }
   }

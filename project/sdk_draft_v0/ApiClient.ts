@@ -1,32 +1,31 @@
+import { CryptoPQ } from './CryptoPQ';
+import { CryptoUtils } from './CryptoUtils';
+import { DeviceEnvelope } from './DeviceUtils';
 export interface LoginRequest {
-  deviceAuthToken: string;
+  accountId: string;
 }
 
 export interface LoginResponse {
   ok: boolean;
-  cipherDeviceList?: string;
-  cipherDeviceListEtag?: string;
   cipherRootFile?: string;
   cipherRootFileEtag?: string;
-  deviceEnvelope?: string;
+  deviceEnvelope?: DeviceEnvelope;
   message?: string;
 }
 
 export interface RegisterRequest {
   accountId: string;
-  deviceNonceHex: string;
-  deviceEnvelopes: string[];
-  cipherDeviceList: string;
+  username: string;
+  deviceName: string;
+  devicePublicKey: string;
+  deviceEnvelopes: DeviceEnvelope[];
   cipherRootFile: string;
-  deviceAuthToken: string;
   otherPublicUserData?: Record<string, any>;
 }
 
 export interface RegisterResponse {
   ok: boolean;
   accountId: string;
-  deviceNonceHex: string;
-  deviceList: { key: string; etag: string };
   rootFile: { key: string; etag: string };
   message?: string;
 }
@@ -52,28 +51,20 @@ export interface ObjectResult {
   reason?: string;
 }
 
-// api.ts
-import { CryptoUtils } from './CryptoUtils';
-
 export class ApiClient {
   private constructor() {} // Prevent instantiation
 
-  private static async fetchJSON<T>(
-    url: string,
-    options: RequestInit,
-    requestId?: string,
-    authToken?: string,
-  ): Promise<T> {
+  private static async fetchJSON<T>(url: string, options: RequestInit, authToken?: string): Promise<T> {
     const headers = new Headers(options.headers);
+    const requestId = headers.get('X-Request-ID');
     headers.set('Content-Type', 'application/json');
-    if (requestId) {
-      headers.set('X-Request-ID', requestId);
-    }
     if (authToken) {
       headers.set('Authorization', `Bearer ${authToken}`);
     }
     const response = await fetch(url, { ...options, headers });
-
+    if (requestId && response.headers.get('X-Request-ID') !== requestId) {
+      throw new Error('Request ID mismatch');
+    }
     if (!response.ok) {
       throw new Error(`HTTP ${response.status}: ${response.statusText}`);
     }
@@ -81,36 +72,50 @@ export class ApiClient {
     return response.json();
   }
 
-  static async login(serviceUrl: string, deviceAuthToken: string): Promise<LoginResponse> {
-    return this.fetchJSON<LoginResponse>(
-      `${serviceUrl}/login`,
-      {
-        method: 'POST',
-        body: JSON.stringify({ deviceAuthToken } as LoginRequest),
-      },
-      CryptoUtils.generateRandomUUID(),
-    );
+  public static async login(
+    serviceUrl: string,
+    payload: LoginRequest,
+    secretSignKey: Uint8Array,
+  ): Promise<LoginResponse> {
+    const body = JSON.stringify(payload);
+    const contentSha256 = await CryptoUtils.sha256(body, 'hex');
+    const timestamp = Date.now().toString();
+    const requestId = CryptoUtils.generateRandomUUID();
+    const stringToSign = ['POST', '/login', contentSha256, timestamp, requestId].join('\n');
+    const headers: Record<string, any> = {
+      'Content-SHA256': contentSha256 as string,
+      'X-Timestamp': timestamp,
+      'X-Request-ID': requestId,
+      'X-Signature': `Signature ${CryptoPQ.sign(secretSignKey, stringToSign)}`,
+    };
+    return this.fetchJSON<LoginResponse>(`${serviceUrl}/login`, {
+      method: 'POST',
+      headers,
+      body,
+    });
   }
 
-  static async register(
+  public static async register(
     serviceUrl: string,
     payload: RegisterRequest,
-    contentSha256?: string,
+    secretSignKey: Uint8Array,
   ): Promise<RegisterResponse> {
-    const headers: HeadersInit = {};
-    if (contentSha256) {
-      headers['Content-sha256'] = contentSha256;
-    }
-
-    return this.fetchJSON<RegisterResponse>(
-      `${serviceUrl}/register`,
-      {
-        method: 'POST',
-        headers,
-        body: JSON.stringify(payload),
-      },
-      CryptoUtils.generateRandomUUID(),
-    );
+    const body = JSON.stringify(payload);
+    const contentSha256 = await CryptoUtils.sha256(body, 'hex');
+    const timestamp = Date.now().toString();
+    const requestId = CryptoUtils.generateRandomUUID();
+    const stringToSign = ['POST', '/register', contentSha256, timestamp, requestId].join('\n');
+    const headers: Record<string, any> = {
+      'Content-SHA256': contentSha256 as string,
+      'X-Timestamp': timestamp,
+      'X-Request-ID': requestId,
+      'X-Signature': `Signature ${CryptoPQ.sign(secretSignKey, stringToSign)}`,
+    };
+    return this.fetchJSON<RegisterResponse>(`${serviceUrl}/register`, {
+      method: 'POST',
+      headers,
+      body,
+    });
   }
 
   static async uploadObject(
@@ -175,7 +180,7 @@ export class ApiClient {
     return Promise.allSettled(fetchPromises);
   }
 
-  static async logout(serviceUrl: string, authToken: string): Promise<{ ok: boolean }> {
+  public static async logout(serviceUrl: string, authToken: string): Promise<{ ok: boolean }> {
     return this.fetchJSON(
       `${serviceUrl}/logout`,
       {
