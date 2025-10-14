@@ -1,13 +1,23 @@
 {
-  "name": "project",
+  "name": "lattice-sdk",
   "version": "1.0.0",
-  "main": "index.js",
+  "type": "module",
+  "files": [
+    "dist/sdk",
+    "README.md",
+    "LICENSE"
+  ],
+  "main": "./dist/sdk/main.js",
+  "module": "./dist/sdk/main.js",
+  "types": "./dist/sdk/main.d.ts",
   "scripts": {
-    "dev": "vite build --watch & wrangler dev",
+    "dev": "vite build --watch && npm run sdk:watch & wrangler dev",
+    "sdk:build": "tsc --project tsconfig.json",
+    "sdk:watch": "tsc --project tsconfig.json --watch --preserveWatchOutput",
+    "sdk:ts": "tsc --project tsconfig.json --noEmit",
     "test": "vitest"
   },
   "keywords": [],
-  "type": "module",
   "author": "",
   "description": "",
   "devDependencies": {
@@ -15,11 +25,12 @@
     "@alpinejs/persist": "3.15.0",
     "@tailwindcss/vite": "4.1.14",
     "alpinejs": "3.15.0",
-    "daisyui": "5.1.27",
-    "hono": "4.9.10",
+    "daisyui": "5.3.1",
+    "hono": "4.9.12",
     "tailwindcss": "4.1.14",
-    "vite": "7.1.9",
-    "wrangler": "4.42.0"
+    "typescript": "^5.9.3",
+    "vite": "7.1.10",
+    "wrangler": "4.42.2"
   },
   "prettier": {
     "bracketSpacing": true,
@@ -33,12 +44,11 @@
     "printWidth": 120
   },
   "dependencies": {
-    "@keyv/redis": "5.1.2",
+    "@keyv/redis": "5.1.3",
     "@noble/hashes": "^2.0.1",
     "@noble/post-quantum": "^0.5.2",
     "keyv-upstash": "1.0.8",
-    "s3mini": "0.5.0",
-    "tsc": "^2.0.4",
+    "s3mini": "0.6.0",
     "vitest": "3.2.4"
   }
 }

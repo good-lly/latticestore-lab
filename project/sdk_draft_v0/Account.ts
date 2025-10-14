@@ -3,13 +3,27 @@ export class Account {
   private accountAlias: string;
   readonly createdAt: Date;
   private lastLoginAt: Date;
-  readonly accountBio?: string;
 
-  constructor(accountId: string, accountAlias: string, createdAt: Date, lastLoginAt: Date, accountBio?: string) {
+  constructor(accountId: string, accountAlias: string, createdAt: Date, lastLoginAt: Date) {
     this.accountId = accountId;
     this.accountAlias = accountAlias;
     this.createdAt = createdAt;
     this.lastLoginAt = lastLoginAt;
-    this.accountBio = accountBio;
+  }
+
+  getAlias(): string {
+    return this.accountAlias;
+  }
+
+  setAlias(newAlias: string): void {
+    this.accountAlias = newAlias;
+  }
+
+  getLastLogin(): Date {
+    return this.lastLoginAt;
+  }
+
+  updateLastLogin(newLoginDate: Date): void {
+    this.lastLoginAt = newLoginDate;
   }
 }

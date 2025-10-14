@@ -18,4 +18,8 @@ export class RemoteDeviceIdentity implements IDevice {
     this.lastActiveAt = lastActiveAt;
     this.publicKey = publicKey;
   }
+
+  public getLastActiveAt(): Date {
+    return this.lastActiveAt;
+  }
 }

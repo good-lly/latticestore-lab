@@ -1,3 +1,4 @@
+import { LoginRequest, RegisterRequest } from './ApiClient';
 export class Helper {
   private constructor() {} // Prevent instantiation
 
@@ -6,26 +7,22 @@ export class Helper {
   private static isNode = typeof process !== 'undefined' && process.versions?.node !== undefined;
 
   /** Converts a string to a Uint8Array using UTF-8 encoding. */
-  static toUint8Array(data: string): Uint8Array {
+  public static toUint8Array(data: string): Uint8Array {
     return this.encoder.encode(data);
   }
 
   /** Converts a Uint8Array back to a string using UTF-8 decoding. */
-  static fromUint8Array(data: Uint8Array): string {
+  public static fromUint8Array(data: Uint8Array): string {
     return this.decoder.decode(data);
   }
 
   /** Converts a Uint8Array to a hexadecimal string. */
-  static uint8ArrayToHex(uint8array: Uint8Array): string {
-    let hex = '';
-    for (let i = 0; i < uint8array.length; i++) {
-      hex += uint8array[i].toString(16).padStart(2, '0');
-    }
-    return hex;
+  public static uint8ArrayToHex(uint8array: Uint8Array): string {
+    return [...uint8array].map(byte => byte.toString(16).padStart(2, '0')).join('');
   }
 
   /** Converts a hexadecimal string to a Uint8Array. */
-  static hexToUint8Array(hex: string): Uint8Array {
+  public static hexToUint8Array(hex: string): Uint8Array {
     if (hex.length % 2 !== 0) {
       throw new Error('Invalid hex string');
     }
@@ -36,7 +33,7 @@ export class Helper {
     return uint8array;
   }
 
-  static uint8ArrayToBase64(uint8array: Uint8Array): string {
+  public static uint8ArrayToBase64(uint8array: Uint8Array): string {
     // Node.js: use Buffer (faster and works in all versions)
     if (this.isNode) {
       return Buffer.from(uint8array).toString('base64');
@@ -58,7 +55,7 @@ export class Helper {
     return btoa(binary);
   }
 
-  static base64ToUint8Array(base64: string): Uint8Array {
+  public static base64ToUint8Array(base64: string): Uint8Array {
     // Node.js: use Buffer
     if (this.isNode) {
       return new Uint8Array(Buffer.from(base64, 'base64'));
@@ -71,5 +68,25 @@ export class Helper {
       uint8array[i] = binary.charCodeAt(i);
     }
     return uint8array;
+  }
+
+  private static canonicalize(obj: any): any {
+    if (Array.isArray(obj)) {
+      return obj.map(this.canonicalize);
+    }
+    if (obj !== null && typeof obj === 'object') {
+      const sorted: Record<string, any> = {};
+      Object.keys(obj)
+        .sort()
+        .forEach(key => {
+          sorted[key] = this.canonicalize(obj[key]);
+        });
+      return sorted;
+    }
+    return obj;
+  }
+
+  public static generateCanonicalJSON(payload: RegisterRequest | LoginRequest): string {
+    return JSON.stringify(this.canonicalize(payload));
   }
 }

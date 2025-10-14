@@ -3,6 +3,7 @@ import { streamSSE } from 'hono/streaming';
 import { S3mini, sanitizeETag } from 's3mini';
 import { Keyv, KeyvHooks } from 'keyv';
 import { KeyvUpstash } from 'keyv-upstash';
+import { LatticeStoreService } from '../dist/sdk/main.js';
 
 const IO_GB = 10 * 1024 * 1024 * 1024; // 10 GB in bytes
 
@@ -14,6 +15,7 @@ function emailIsValid(email) {
 }
 
 const api = new Hono({ strict: false });
+const latticeService = new LatticeStoreService();
 
 api.use('*', async (c, next) => {
   const { REDIS_URL, REDIS_TOKEN, USER_STORAGE_QUOTA, S3_ACCESS_KEY_ID, S3_SECRET_ACCESS_KEY, S3_ENDPOINT, S3_REGION } =
@@ -164,49 +166,52 @@ api.post('login', async c => {
 
 // TBD rework
 api.post('register', async c => {
-  const { userId, userPasswordHash, deviceName, email, initData } = await c.req.json();
+  const body = await c.req.json();
+  const headers = c.req.header();
+  console.log('Register headers: ', headers);
   const users = c.get('users');
   // const rootfiles = c.get('rootfiles');
   const s3client = c.get('s3');
   if (!users) {
     return c.json({ ok: false, message: 'Keyv not initialized' }, 500);
   }
-  const userExists = await users.get(`user:${userId}`);
-  console.log('userExists is: ', userExists);
-  if (typeof userExists !== 'undefined') {
-    return c.json({ ok: false, message: 'User already exists' }, 409);
-  }
-  // TBD enable this!
-  // if (!emailIsValid(email)) {
-  //   return c.json({ ok: false, message: 'Invalid email vole' }, 400);
+
+  // const userExists = await users.get(`user:${body.userId}`);
+  // console.log('userExists is: ', userExists);
+  // if (typeof userExists !== 'undefined') {
+  //   return c.json({ ok: false, message: 'User already exists' }, 409);
   // }
-  if (email !== 'peter' && email !== 'locus') {
-    return c.json({ ok: false, message: 'Invalid email' }, 400);
-  }
-  if (userPasswordHash.length !== 64) {
-    return c.json({ ok: false, message: 'Invalid password hash length' }, 400);
-  }
-  const uint8Array = Uint8Array.from(atob(initData), c => c.charCodeAt(0));
-  const bytesUsed = uint8Array.length;
-  const bytesLimit = c.get('bytesLimit');
-  const percentageUsed = (bytesUsed / bytesLimit) * 100;
+  // // TBD enable this!
+  // // if (!emailIsValid(email)) {
+  // //   return c.json({ ok: false, message: 'Invalid email vole' }, 400);
+  // // }
+  // if (email !== 'peter' && email !== 'locus') {
+  //   return c.json({ ok: false, message: 'Invalid email' }, 400);
+  // }
+  // if (userPasswordHash.length !== 64) {
+  //   return c.json({ ok: false, message: 'Invalid password hash length' }, 400);
+  // }
+  // const uint8Array = Uint8Array.from(atob(initData), c => c.charCodeAt(0));
+  // const bytesUsed = uint8Array.length;
+  // const bytesLimit = c.get('bytesLimit');
+  // const percentageUsed = (bytesUsed / bytesLimit) * 100;
 
-  await users.set(`user:${userId}`, {
-    userId,
-    userPasswordHash,
-    devices: [deviceName],
-    email,
-    bytesUsed,
-    bytesLimit,
-    percentageUsed,
-    limited: false,
-    remainingBytes: Math.max(0, bytesLimit - bytesUsed),
-  });
+  // await users.set(`user:${userId}`, {
+  //   userId,
+  //   userPasswordHash,
+  //   devices: [deviceName],
+  //   email,
+  //   bytesUsed,
+  //   bytesLimit,
+  //   percentageUsed,
+  //   limited: false,
+  //   remainingBytes: Math.max(0, bytesLimit - bytesUsed),
+  // });
 
-  const s3response = await s3client.putObject(`${userId}/user:${userId}.rf`, Buffer.from(uint8Array));
-  if (!s3response.ok) {
-    return c.json({ ok: false, message: 'Error creating initial root file in S3' }, 500);
-  }
+  // const s3response = await s3client.putObject(`${userId}/user:${userId}.rf`, Buffer.from(uint8Array));
+  // if (!s3response.ok) {
+  //   return c.json({ ok: false, message: 'Error creating initial root file in S3' }, 500);
+  // }
   return c.json({ ok: true, message: 'Registration successful' });
 });
 

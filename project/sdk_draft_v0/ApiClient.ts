@@ -1,6 +1,7 @@
 import { CryptoPQ } from './CryptoPQ';
 import { CryptoUtils } from './CryptoUtils';
 import { DeviceEnvelope } from './DeviceUtils';
+import { Helper } from './Helpers';
 export interface LoginRequest {
   accountId: string;
 }
@@ -69,7 +70,7 @@ export class ApiClient {
       throw new Error(`HTTP ${response.status}: ${response.statusText}`);
     }
 
-    return response.json();
+    return response.json() as Promise<T>;
   }
 
   public static async login(
@@ -86,7 +87,7 @@ export class ApiClient {
       'Content-SHA256': contentSha256 as string,
       'X-Timestamp': timestamp,
       'X-Request-ID': requestId,
-      'X-Signature': `Signature ${CryptoPQ.sign(secretSignKey, stringToSign)}`,
+      'X-Signature': `Signature ${Helper.uint8ArrayToBase64(CryptoPQ.sign(secretSignKey, stringToSign))}`,
     };
     return this.fetchJSON<LoginResponse>(`${serviceUrl}/login`, {
       method: 'POST',
@@ -100,7 +101,7 @@ export class ApiClient {
     payload: RegisterRequest,
     secretSignKey: Uint8Array,
   ): Promise<RegisterResponse> {
-    const body = JSON.stringify(payload);
+    const body = Helper.generateCanonicalJSON(payload);
     const contentSha256 = await CryptoUtils.sha256(body, 'hex');
     const timestamp = Date.now().toString();
     const requestId = CryptoUtils.generateRandomUUID();
@@ -109,7 +110,7 @@ export class ApiClient {
       'Content-SHA256': contentSha256 as string,
       'X-Timestamp': timestamp,
       'X-Request-ID': requestId,
-      'X-Signature': `Signature ${CryptoPQ.sign(secretSignKey, stringToSign)}`,
+      'X-Signature': `Signature ${Helper.uint8ArrayToBase64(CryptoPQ.sign(secretSignKey, stringToSign))}`,
     };
     return this.fetchJSON<RegisterResponse>(`${serviceUrl}/register`, {
       method: 'POST',

@@ -18,7 +18,7 @@ export interface DeviceEnvelope {
 export interface DeviceCredentials {
   deviceId: string;
   deviceName: string;
-  dsaPublicKeyHex: string; // hex encoded
+  dsaPublicKeyBase64: string; // base64 encoded
   dsaSecretKey: Uint8Array;
   _seeds: {
     kem: Uint8Array;
@@ -56,7 +56,7 @@ export class DeviceUtils {
     return {
       deviceId,
       deviceName: name,
-      dsaPublicKeyHex: Helper.uint8ArrayToHex(dsaKeys.publicKey),
+      dsaPublicKeyBase64: Helper.uint8ArrayToBase64(dsaKeys.publicKey),
       dsaSecretKey: dsaKeys.secretKey,
       _seeds: {
         kem: finalKemSeed,

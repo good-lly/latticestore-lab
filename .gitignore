@@ -68,3 +68,5 @@ local.properties
 project/.wrangler
 project/docs
 project/node_modules
+
+project/dist

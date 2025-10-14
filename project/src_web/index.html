@@ -9,6 +9,8 @@
       href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' width='32' height='32'><rect width='100%' height='100%' fill='red'/></svg>"
     />
     <script type="module">
+      import { LatticeStoreClient } from '../dist/sdk/main.js';
+      const lattice = new LatticeStoreClient();
       import Alpine from 'alpinejs';
       import persist from '@alpinejs/persist';
       import focus from '@alpinejs/focus';
@@ -74,10 +76,17 @@
           }
         },
         async register(newUsername, password) {
-          console.log('Creating new user:', newUsername);
-          const registerResp = await this.store.register(newUsername, this.devicename, 'password', API_ENDPOINT);
+          console.log('Creating new user:', newUsername, lattice.registerNewAccount);
+          const registerResp = await lattice.registerNewAccount(
+            API_ENDPOINT,
+            newUsername,
+            this.devicename,
+            new Uint8Array([1, 2, 3, 4, 5, 6, 7, 8, 9, 0]),
+          );
+          console.log('Registration response:', registerResp);
           if (registerResp.ok) {
-            await this.login(newUsername);
+            alert('Registration successful! You can now log in.');
+            // await this.login(newUsername, password);
           } else {
             alert(registerResp.message);
           }

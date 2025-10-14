@@ -39,7 +39,7 @@ class Store {
   async register(username, deviceName, password, endpoint) {
     try {
       // Create empty VFS structure
-      const emptyVfs = { nodes: {} };
+      // const emptyVfs = { nodes: {} };
       const uint8 = new TextEncoder().encode(JSON.stringify(emptyVfs));
 
       const [userId, filePwd, filePwdAB] = await Promise.all([

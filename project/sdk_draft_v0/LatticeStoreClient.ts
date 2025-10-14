@@ -11,26 +11,24 @@ export class LatticeStoreClient {
     serviceUrl: string,
     username: string,
     deviceName: string,
-    userMasterSeed: Uint8Array = new Uint8Array(),
+    thisDeviceMasterSeed: Uint8Array = new Uint8Array(),
   ) {
     try {
-      if (!serviceUrl || !username || !deviceName) {
-        throw new Error('Service URL, username, and device name are required');
-      }
-      const finalMasterSeed = userMasterSeed.length > 0 ? userMasterSeed : CryptoUtils.generateRandomBytes(32);
-      const { kemSeed, dsaSeed } = CryptoUtils.deriveSeeds(finalMasterSeed);
+      const thisFinalMasterSeed =
+        thisDeviceMasterSeed.length > 0 ? thisDeviceMasterSeed : CryptoUtils.generateRandomBytes(128);
+      const { kemSeed, dsaSeed, accountId } = CryptoUtils.deriveSeeds(thisFinalMasterSeed);
       const masterKey = AEAD.generateRawAEADKeyData();
 
       const [thisDeviceCredentials, recoveryDevice] = await Promise.all([
-        DeviceUtils.generateNewDeviceCredential(deviceName, masterKey),
-        DeviceUtils.generateNewDeviceCredential(RECOVERY_DEVICE_NAME, masterKey, kemSeed, dsaSeed), // deterministic recovery device
+        DeviceUtils.generateNewDeviceCredential(deviceName, masterKey, kemSeed, dsaSeed), // local device is generated from user-provided seed
+        DeviceUtils.generateNewDeviceCredential(RECOVERY_DEVICE_NAME, masterKey), // recovery device is always random!
       ]);
 
       const registerPayload: RegisterRequest = {
-        accountId: Helper.uint8ArrayToHex(CryptoUtils.generateRandomBytes(32)),
+        accountId: Helper.uint8ArrayToHex(accountId),
         username: username.trim(),
         deviceName: deviceName,
-        devicePublicKey: thisDeviceCredentials.dsaPublicKeyHex,
+        devicePublicKey: thisDeviceCredentials.dsaPublicKeyBase64,
         deviceEnvelopes: [thisDeviceCredentials.envelope as DeviceEnvelope, recoveryDevice.envelope as DeviceEnvelope], // include device envelopes
         cipherRootFile: 'TODO', // Encrypt and include the root file
       };
