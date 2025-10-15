@@ -1,0 +1,139 @@
+import { CryptoUtils } from './CryptoUtils';
+import { RegisterRequest } from './ApiClient';
+import { CryptoPQ, ML_DSA_PUBLIC_KEY_SIZE, ML_DSA_SIGNATURE_SIZE } from './CryptoPQ';
+import { base64ToUint8Array, toUint8Array, generateCanonicalJSON } from './Helpers';
+import { VALIDATION_RULES as C, TIMESTAMP_TOLERANCE_MS, RESERVED_USERNAMES } from './Consts';
+
+const _isTimestampValid = (clientTime: number): boolean => {
+  const serverTime = Date.now();
+  const timeDiff = Math.abs(serverTime - clientTime);
+  if (timeDiff > TIMESTAMP_TOLERANCE_MS) {
+    return false;
+  }
+  return true;
+};
+
+const _isValidRegistrationHeaders = (headers: Headers): boolean => {
+  for (const header of C.deviceRegistrationHeaders.requiredFields) {
+    if (!headers.has(header)) {
+      return false;
+    }
+  }
+  const clientTime = parseInt(headers.get('X-Timestamp') || '0', 10);
+  const isValidTimestamp = _isTimestampValid(clientTime);
+  if (!isValidTimestamp) {
+    throw new Error('Invalid timestamp');
+  }
+  return true;
+};
+
+const _isValidRegistrationPayload = (body: RegisterRequest): boolean => {
+  for (const field of C.deviceRegistrationPayload.requiredFields) {
+    if (!(field in body)) {
+      return false;
+    }
+  }
+  if (!validateAccountId(body.accountId)) return false;
+  if (!validateUsername(body.username)) return false;
+  if (!validateDeviceName(body.deviceName)) return false;
+  if (!validateDeviceEnvelopes(body.deviceEnvelopes)) return false;
+
+  return true;
+};
+
+const _getPredefinedHeaderValues = (headers: Headers): [number, string, string, string] => {
+  return [
+    parseInt(headers.get('X-Timestamp') || '0', 10),
+    headers.get('X-Request-ID') || '',
+    headers.get('Content-SHA256') || '',
+    headers.get('X-Signature') || '',
+  ];
+};
+
+const _isValidRegistrationSignature = (headers: Headers, payload: RegisterRequest): boolean => {
+  const [clientTime, requestId, contentSha256, signatureHeader] = _getPredefinedHeaderValues(headers);
+  if (!signatureHeader || !signatureHeader.startsWith('Signature ')) {
+    throw new Error('Missing or malformed signature header');
+  }
+  const signature = signatureHeader.split(' ')[1];
+  const signatureBytes = base64ToUint8Array(signature as string);
+  if (signatureBytes.length !== ML_DSA_SIGNATURE_SIZE) {
+    throw new Error('Invalid signature length');
+  }
+  // convert devicePublicKey from base64 to Uint8Array
+  const devicePublicKey = base64ToUint8Array(payload.devicePublicKey);
+  if (devicePublicKey.length !== ML_DSA_PUBLIC_KEY_SIZE) {
+    throw new Error('Invalid public key length');
+  }
+  // verify signature
+  const messageToVerify = toUint8Array(['POST', '/register', contentSha256, clientTime, requestId].join('\n'));
+  return CryptoPQ.verifySignature(devicePublicKey, messageToVerify, signatureBytes);
+};
+
+const _isUsernameReserved = (username: string): boolean => {
+  const normalized = username.toLowerCase().trim();
+
+  // Direct match
+  if (RESERVED_USERNAMES.includes(normalized)) return true;
+
+  // Starts with reserved terms
+  const reservedPrefixes = ['admin', 'mod', 'support', 'staff', 'system', 'official'];
+  if (reservedPrefixes.some(prefix => normalized.startsWith(prefix))) return true;
+
+  // Contains "official" or "verified" anywhere
+  if (/(official|verified|staff|support|admin)/i.test(normalized)) return true;
+
+  return false;
+};
+
+export const validateUsername = (username: string): boolean => {
+  if (typeof username !== 'string') return false;
+  if (_isUsernameReserved(username)) return false;
+  const trimmed = username.trim();
+  const rules = C.username;
+  return trimmed.length >= rules.minLength && trimmed.length <= rules.maxLength && rules.pattern.test(trimmed);
+};
+
+export const validateDeviceName = (deviceName: string): boolean => {
+  if (typeof deviceName !== 'string') return false;
+  const trimmed = deviceName.trim();
+  const rules = C.deviceName;
+  return trimmed.length >= rules.minLength && trimmed.length <= rules.maxLength && rules.pattern.test(trimmed);
+};
+
+export const validateAccountId = (accountId: string): boolean => {
+  return typeof accountId === 'string' && C.accountId.pattern.test(accountId);
+};
+
+export const validateDeviceEnvelopes = (envelopes: any[]): boolean => {
+  const rules = C.deviceRegistrationEnvelopes;
+  if (!Array.isArray(envelopes) || envelopes.length < rules.minCount) return false;
+  return envelopes.every(
+    env =>
+      env &&
+      typeof env === 'object' &&
+      rules.requiredFields.every(field => field in env && typeof env[field] === 'string'),
+  );
+};
+
+export const validateRegistrationRequest = async (headers: Headers, body: RegisterRequest): Promise<boolean> => {
+  const validHeaders = _isValidRegistrationHeaders(headers);
+  if (!validHeaders) {
+    throw new Error('Invalid headers for registration');
+  }
+  const validPayload = _isValidRegistrationPayload(body);
+  if (!validPayload) {
+    throw new Error('Invalid registration payload');
+  }
+  const payloadString = generateCanonicalJSON(body);
+  const calculatedSha256 = await CryptoUtils.sha256(payloadString, 'hex');
+  const contentSha256 = headers.get('Content-SHA256');
+  if (calculatedSha256 !== contentSha256) {
+    throw new Error('Content SHA256 mismatch');
+  }
+  const isValidSignature = _isValidRegistrationSignature(headers, body);
+  if (!isValidSignature) {
+    throw new Error('Invalid signature for registration');
+  }
+  return true;
+};

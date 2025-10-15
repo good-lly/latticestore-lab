@@ -1,7 +1,7 @@
 import { CryptoPQ } from './CryptoPQ';
 import { CryptoUtils } from './CryptoUtils';
 import { AEAD, RawAEADKey } from './CryptoAEAD';
-import { Helper } from './Helpers';
+import { uint8ArrayToHex, uint8ArrayToBase64 } from './Helpers';
 
 export const RECOVERY_DEVICE_NAME = 'RECOVERY_DEVICE';
 
@@ -56,7 +56,7 @@ export class DeviceUtils {
     return {
       deviceId,
       deviceName: name,
-      dsaPublicKeyBase64: Helper.uint8ArrayToBase64(dsaKeys.publicKey),
+      dsaPublicKeyBase64: uint8ArrayToBase64(dsaKeys.publicKey),
       dsaSecretKey: dsaKeys.secretKey,
       _seeds: {
         kem: finalKemSeed,
@@ -65,9 +65,9 @@ export class DeviceUtils {
       envelope: {
         deviceId,
         // dsaPublicKeyHex: Helper.uint8ArrayToHex(dsaKeys.publicKey),
-        kemPublicKeyHex: Helper.uint8ArrayToHex(kemKeys.publicKey),
-        encryptedMasterKeyHex: Helper.uint8ArrayToHex(encryptedMasterKey),
-        cipherTextHex: Helper.uint8ArrayToHex(cipherText),
+        kemPublicKeyHex: uint8ArrayToHex(kemKeys.publicKey),
+        encryptedMasterKeyHex: uint8ArrayToHex(encryptedMasterKey),
+        cipherTextHex: uint8ArrayToHex(cipherText),
       },
     };
   }

@@ -15,9 +15,7 @@ function emailIsValid(email) {
 }
 
 const api = new Hono({ strict: false });
-const latticeService = new LatticeStoreService();
-
-api.use('*', async (c, next) => {
+const latticeService = api.use('*', async (c, next) => {
   const { REDIS_URL, REDIS_TOKEN, USER_STORAGE_QUOTA, S3_ACCESS_KEY_ID, S3_SECRET_ACCESS_KEY, S3_ENDPOINT, S3_REGION } =
     c.env;
 
@@ -72,6 +70,17 @@ api.use('*', async (c, next) => {
     namespace: 'tokens',
   });
   c.set('tokens', tokens);
+
+  const ls = new LatticeStoreService(
+    {
+      accessKeyId: S3_ACCESS_KEY_ID,
+      secretAccessKey: S3_SECRET_ACCESS_KEY,
+      endpoint: S3_ENDPOINT,
+      region: S3_REGION,
+    },
+    { REDIS_URL, REDIS_TOKEN },
+  );
+  c.set('lattice', ls);
   await next();
 });
 api.get('list', async c => {

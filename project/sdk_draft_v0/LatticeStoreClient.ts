@@ -1,9 +1,9 @@
 'use strict';
 
-import { ApiClient, RegisterRequest } from './ApiClient';
+import { apiRegister, RegisterRequest } from './ApiClient';
 import { CryptoUtils } from './CryptoUtils';
 import { AEAD } from './CryptoAEAD';
-import { Helper } from './Helpers';
+import { uint8ArrayToHex } from './Helpers';
 import { DeviceEnvelope, DeviceUtils, RECOVERY_DEVICE_NAME } from './DeviceUtils';
 
 export class LatticeStoreClient {
@@ -25,14 +25,14 @@ export class LatticeStoreClient {
       ]);
 
       const registerPayload: RegisterRequest = {
-        accountId: Helper.uint8ArrayToHex(accountId),
+        accountId: uint8ArrayToHex(accountId),
         username: username.trim(),
         deviceName: deviceName,
         devicePublicKey: thisDeviceCredentials.dsaPublicKeyBase64,
         deviceEnvelopes: [thisDeviceCredentials.envelope as DeviceEnvelope, recoveryDevice.envelope as DeviceEnvelope], // include device envelopes
         cipherRootFile: 'TODO', // Encrypt and include the root file
       };
-      const request = await ApiClient.register(serviceUrl, registerPayload, thisDeviceCredentials.dsaSecretKey);
+      const request = await apiRegister(serviceUrl, registerPayload, thisDeviceCredentials.dsaSecretKey);
       if (!request.ok) {
         throw new Error(request.message || 'Registration failed');
       }
