@@ -10,6 +10,15 @@ export default defineConfig({
     outDir: path.resolve(__dirname, './docs'), // output dir
     assetsDir: 'static',
     emptyOutDir: true,
+    rollupOptions: {
+      external: [
+        // External server-only dependencies
+        'keyv-upstash',
+        '@keyv/redis',
+        '@keyv/serialize',
+        's3mini',
+      ],
+    },
   },
   server: {
     middlewareMode: true,

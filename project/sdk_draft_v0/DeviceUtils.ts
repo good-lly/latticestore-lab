@@ -1,31 +1,31 @@
 import { CryptoPQ } from './CryptoPQ';
 import { CryptoUtils } from './CryptoUtils';
 import { AEAD, RawAEADKey } from './CryptoAEAD';
-import { uint8ArrayToHex, uint8ArrayToBase64 } from './Helpers';
+import { uint8ArrayToHex, uint8ArrayToBase64, toUint8Array } from './Helpers';
 
 export const RECOVERY_DEVICE_NAME = 'RECOVERY_DEVICE';
 
 // Device envelope which holds the public keys and encrypted master key
-export interface DeviceEnvelope {
+export type DeviceEnvelope = {
   deviceId: string;
-  // dsaPublicKeyHex: string; // hex encoded
-  kemPublicKeyHex: string; // hex encoded
+  dsaPublicKeyBase64: string; // base64 encoded
   encryptedMasterKeyHex: string; // hex - AES-GCM encrypted
   cipherTextHex: string; // hex encoded - ciphertext from KEM encapsulation
-}
+};
 
 // Credentials for a device including keys and seeds - never leave the client
-export interface DeviceCredentials {
+export type DeviceCredentials = {
   deviceId: string;
   deviceName: string;
   dsaPublicKeyBase64: string; // base64 encoded
   dsaSecretKey: Uint8Array;
+  kemPublicKey: Uint8Array;
   _seeds: {
     kem: Uint8Array;
     dsa: Uint8Array;
   };
   envelope?: DeviceEnvelope; // Optional envelope for server registration
-}
+};
 
 export class DeviceUtils {
   private constructor() {} // Prevent instantiation
@@ -58,17 +58,29 @@ export class DeviceUtils {
       deviceName: name,
       dsaPublicKeyBase64: uint8ArrayToBase64(dsaKeys.publicKey),
       dsaSecretKey: dsaKeys.secretKey,
+      kemPublicKey: kemKeys.publicKey,
       _seeds: {
         kem: finalKemSeed,
         dsa: finalDsaSeed,
       },
       envelope: {
         deviceId,
-        // dsaPublicKeyHex: Helper.uint8ArrayToHex(dsaKeys.publicKey),
-        kemPublicKeyHex: uint8ArrayToHex(kemKeys.publicKey),
+        dsaPublicKeyBase64: uint8ArrayToBase64(dsaKeys.publicKey),
         encryptedMasterKeyHex: uint8ArrayToHex(encryptedMasterKey),
         cipherTextHex: uint8ArrayToHex(cipherText),
       },
     };
   }
+
+  public static buildDeviceList = async (devices: DeviceCredentials[], masterKey: Uint8Array): Promise<string> => {
+    const deviceList = devices.map(device => ({
+      deviceId: device.deviceId,
+      deviceName: device.deviceName,
+      kemPublicKeyHex: uint8ArrayToHex(device.kemPublicKey),
+    }));
+    const deviceListUint8Array = toUint8Array(JSON.stringify(deviceList));
+    const aeadMasterKey = await AEAD.importAEADKey(masterKey as RawAEADKey);
+    const encryptedDL = await AEAD.encrypt(aeadMasterKey, deviceListUint8Array as Uint8Array<ArrayBuffer>);
+    return uint8ArrayToBase64(encryptedDL);
+  };
 }

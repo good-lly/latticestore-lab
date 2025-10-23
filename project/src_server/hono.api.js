@@ -1,18 +1,15 @@
 import { Hono } from 'hono';
 import { streamSSE } from 'hono/streaming';
-import { S3mini, sanitizeETag } from 's3mini';
-import { Keyv, KeyvHooks } from 'keyv';
-import { KeyvUpstash } from 'keyv-upstash';
-import { LatticeStoreService } from '../dist/sdk/main.js';
+import { LatticeStoreService } from '../dist/sdk/LatticeStoreService.js';
 
 const IO_GB = 10 * 1024 * 1024 * 1024; // 10 GB in bytes
 
-function getRandomAuthToken() {
-  return crypto.randomUUID();
-}
-function emailIsValid(email) {
-  return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email);
-}
+// function getRandomAuthToken() {
+//   return crypto.randomUUID();
+// }
+// function emailIsValid(email) {
+//   return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email);
+// }
 
 const api = new Hono({ strict: false });
 const latticeService = api.use('*', async (c, next) => {
@@ -25,52 +22,6 @@ const latticeService = api.use('*', async (c, next) => {
 
   const bytesLimit = USER_STORAGE_QUOTA ? parseInt(USER_STORAGE_QUOTA) : IO_GB;
   c.set('bytesLimit', bytesLimit);
-
-  const s3 = new S3mini({
-    accessKeyId: S3_ACCESS_KEY_ID,
-    secretAccessKey: S3_SECRET_ACCESS_KEY,
-    endpoint: S3_ENDPOINT,
-    region: S3_REGION,
-  });
-  c.set('s3', s3);
-
-  const chunks = new Keyv({
-    store: new KeyvUpstash({
-      url: REDIS_URL,
-      token: REDIS_TOKEN,
-      enableTelemetry: false,
-      automaticDeserialization: false,
-    }),
-    ttl: 20 * 60 * 1000, // 20 minutes
-    namespace: 'chunks',
-  });
-  c.set('chunks', chunks);
-
-  const users = new Keyv({
-    store: new KeyvUpstash({
-      url: REDIS_URL,
-      token: REDIS_TOKEN,
-      enableTelemetry: false,
-      automaticDeserialization: true,
-    }),
-    namespace: 'users',
-    serialize: JSON.stringify,
-    deserialize: JSON.parse,
-  });
-  c.set('users', users);
-
-  const tokens = new Keyv({
-    store: new KeyvUpstash({
-      url: REDIS_URL,
-      token: REDIS_TOKEN,
-      enableTelemetry: false,
-      automaticDeserialization: false,
-    }),
-    ttl: 60 * 60 * 1000, // 1 hour
-    namespace: 'tokens',
-  });
-  c.set('tokens', tokens);
-
   const ls = new LatticeStoreService(
     {
       accessKeyId: S3_ACCESS_KEY_ID,
@@ -176,14 +127,17 @@ api.post('login', async c => {
 // TBD rework
 api.post('register', async c => {
   const body = await c.req.json();
-  const headers = c.req.header();
+  const headers = c.req.raw.headers;
   console.log('Register headers: ', headers);
-  const users = c.get('users');
-  // const rootfiles = c.get('rootfiles');
-  const s3client = c.get('s3');
-  if (!users) {
-    return c.json({ ok: false, message: 'Keyv not initialized' }, 500);
+  const ls = c.get('lattice');
+  if (!ls) {
+    return c.json({ ok: false, message: 'Service not initialized' }, 500);
   }
+  const regResponse = await ls.register(headers, body);
+  console.log('Registration response: ', regResponse);
+  c.header('x-request-id', headers.get('x-request-id'));
+  return c.json(regResponse);
+  // const users = c.get('users');
 
   // const userExists = await users.get(`user:${body.userId}`);
   // console.log('userExists is: ', userExists);

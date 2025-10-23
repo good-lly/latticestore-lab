@@ -100,6 +100,12 @@ export const VALIDATION_RULES = {
     pattern: /^[a-zA-Z0-9_-]+$/,
     description: 'Alphanumeric, underscore, and hyphen only',
   },
+  email: {
+    minLength: 5,
+    maxLength: 256,
+    pattern: /^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$/,
+    description: 'Standard email format',
+  },
   displayName: {
     minLength: 3,
     maxLength: 64,
@@ -119,12 +125,12 @@ export const VALIDATION_RULES = {
   },
   deviceRegistrationEnvelopes: {
     minCount: 2,
-    requiredFields: ['deviceId', 'kemPublicKeyHex', 'encryptedMasterKeyHex', 'cipherTextHex'],
+    requiredFields: ['deviceId', 'dsaPublicKeyBase64', 'encryptedMasterKeyHex', 'cipherTextHex'],
   },
   deviceRegistrationHeaders: {
     requiredFields: ['Content-SHA256', 'X-Timestamp', 'X-Request-ID', 'X-Signature'],
   },
   deviceRegistrationPayload: {
-    requiredFields: ['accountId', 'username', 'deviceName', 'devicePublicKey', 'deviceEnvelopes', 'cipherRootFile'],
+    requiredFields: ['username', 'devicePublicKey', 'deviceEnvelopes', 'deviceListFile', 'devices'],
   },
 } as const;

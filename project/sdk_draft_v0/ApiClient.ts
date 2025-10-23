@@ -15,13 +15,13 @@ export interface LoginResponse {
 }
 
 export interface RegisterRequest {
-  accountId: string;
   username: string;
-  deviceName: string;
   devicePublicKey: string;
   deviceEnvelopes: DeviceEnvelope[];
-  cipherRootFile: string;
-  otherPublicUserData?: Record<string, any>;
+  deviceListFile: string;
+  devices: string[];
+  email?: string | undefined;
+  otherPublicUserData?: Record<string, any> | undefined;
 }
 
 export interface RegisterResponse {

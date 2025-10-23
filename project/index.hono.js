@@ -1,7 +1,6 @@
 import { Hono } from 'hono';
 import { cors } from 'hono/cors';
 import { logger } from 'hono/logger';
-import { html, raw } from 'hono/html';
 import { serveStatic } from 'hono/cloudflare-workers';
 
 import { api } from './src_server/hono.api.js';

@@ -68,6 +68,22 @@ export const base64ToUint8Array = (base64: string): Uint8Array => {
   return uint8array;
 };
 
+export const base64ToBuffer = (base64: string): Buffer<ArrayBuffer> => {
+  // Node.js: use Buffer
+  if (_isNode) {
+    return Buffer.from(base64, 'base64');
+  }
+
+  // Browser: atob
+  const binary = atob(base64);
+  const len = binary.length;
+  const bytes = new Uint8Array(len);
+  for (let i = 0; i < len; i++) {
+    bytes[i] = binary.charCodeAt(i);
+  }
+  return Buffer.from(bytes);
+};
+
 const _canonicalize = (obj: any): any => {
   if (Array.isArray(obj)) {
     return obj.map(_canonicalize);

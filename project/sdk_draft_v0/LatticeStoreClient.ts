@@ -3,7 +3,6 @@
 import { apiRegister, RegisterRequest } from './ApiClient';
 import { CryptoUtils } from './CryptoUtils';
 import { AEAD } from './CryptoAEAD';
-import { uint8ArrayToHex } from './Helpers';
 import { DeviceEnvelope, DeviceUtils, RECOVERY_DEVICE_NAME } from './DeviceUtils';
 
 export class LatticeStoreClient {
@@ -12,11 +11,12 @@ export class LatticeStoreClient {
     username: string,
     deviceName: string,
     thisDeviceMasterSeed: Uint8Array = new Uint8Array(),
+    email?: string,
   ) {
     try {
       const thisFinalMasterSeed =
         thisDeviceMasterSeed.length > 0 ? thisDeviceMasterSeed : CryptoUtils.generateRandomBytes(128);
-      const { kemSeed, dsaSeed, accountId } = CryptoUtils.deriveSeeds(thisFinalMasterSeed);
+      const { kemSeed, dsaSeed } = CryptoUtils.deriveSeeds(thisFinalMasterSeed);
       const masterKey = AEAD.generateRawAEADKeyData();
 
       const [thisDeviceCredentials, recoveryDevice] = await Promise.all([
@@ -25,12 +25,12 @@ export class LatticeStoreClient {
       ]);
 
       const registerPayload: RegisterRequest = {
-        accountId: uint8ArrayToHex(accountId),
         username: username.trim(),
-        deviceName: deviceName,
         devicePublicKey: thisDeviceCredentials.dsaPublicKeyBase64,
         deviceEnvelopes: [thisDeviceCredentials.envelope as DeviceEnvelope, recoveryDevice.envelope as DeviceEnvelope], // include device envelopes
-        cipherRootFile: 'TODO', // Encrypt and include the root file
+        deviceListFile: await DeviceUtils.buildDeviceList([thisDeviceCredentials, recoveryDevice], masterKey),
+        devices: [thisDeviceCredentials.deviceId, recoveryDevice.deviceId],
+        email: email?.trim(),
       };
       const request = await apiRegister(serviceUrl, registerPayload, thisDeviceCredentials.dsaSecretKey);
       if (!request.ok) {
@@ -47,11 +47,20 @@ export class LatticeStoreClient {
     }
   }
 
-  public login() {
-    try {
-      // TODO
-    } catch (error) {
-      throw error;
-    }
-  }
+  // public async login(serviceUrl: string, thisDeviceMasterSeed: Uint8Array = new Uint8Array()) {
+  //   try {
+  //     const { kemSeed, dsaSeed, accountId } = CryptoUtils.deriveSeeds(thisDeviceMasterSeed);
+  //     const loginPayload: LoginRequest = {
+  //       accountId: uint8ArrayToHex(accountId),
+  //       username: username.trim(),
+  //       devicePublicKey: thisDeviceCredentials.dsaPublicKeyBase64,
+  //       deviceEnvelopes: [thisDeviceCredentials.envelope as DeviceEnvelope, recoveryDevice.envelope as DeviceEnvelope], // include device envelopes
+  //       deviceListFile: await DeviceUtils.buildDeviceList([thisDeviceCredentials, recoveryDevice], masterKey),
+  //       devices: [thisDeviceCredentials.deviceId, recoveryDevice.deviceId],
+  //       email: email?.trim(),
+  //     };
+  //   } catch (error) {
+  //     throw error;
+  //   }
+  // }
 }

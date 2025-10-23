@@ -77,7 +77,7 @@ export class CryptoUtils {
   static deriveSeeds(
     masterSeed: Uint8Array,
     context: string = 'lattice-store-v1',
-  ): { kemSeed: Uint8Array; dsaSeed: Uint8Array; accountId: Uint8Array } {
+  ): { kemSeed: Uint8Array; dsaSeed: Uint8Array } {
     // Add context for domain separation
     const contextBytes = new TextEncoder().encode(context);
     const input = new Uint8Array(contextBytes.length + masterSeed.length);
@@ -85,13 +85,12 @@ export class CryptoUtils {
     input.set(masterSeed, contextBytes.length);
 
     // SHAKE256 can output arbitrary length
-    const outputLength = 128; // 64 bytes for KEM + 32 bytes for DSA + 32 bytes for AccountID
+    const outputLength = 96; // 64 bytes for KEM + 32 bytes for DSA
     const derived = this.letsShake256(input, outputLength);
 
     return {
       kemSeed: derived.slice(0, 64), // First 64 bytes
       dsaSeed: derived.slice(64, 96), // Next 32 bytes
-      accountId: derived.slice(96, 128), // Last 32 bytes
     };
   }
 
