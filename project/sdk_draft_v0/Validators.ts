@@ -1,5 +1,5 @@
 import { CryptoUtils } from './CryptoUtils';
-import { RegisterRequest } from './ApiClient';
+import { RegisterRequest, LoginRequest } from './ApiClient';
 import { CryptoPQ, ML_DSA_PUBLIC_KEY_SIZE, ML_DSA_SIGNATURE_SIZE } from './CryptoPQ';
 import { base64ToUint8Array, toUint8Array, generateCanonicalJSON } from './Helpers';
 import { VALIDATION_RULES as C, TIMESTAMP_TOLERANCE_MS, RESERVED_USERNAMES } from './Consts';
@@ -13,8 +13,8 @@ const _isTimestampValid = (clientTime: number): boolean => {
   return true;
 };
 
-const _isValidRegistrationHeaders = (headers: Headers): boolean => {
-  for (const header of C.deviceRegistrationHeaders.requiredFields) {
+const _isValidSignedHeaders = (headers: Headers): boolean => {
+  for (const header of C.signedHeaders.requiredFields) {
     if (!headers.has(header)) {
       return false;
     }
@@ -51,7 +51,7 @@ const _getPredefinedHeaderValues = (headers: Headers): [number, string, string, 
   ];
 };
 
-const _isValidRegistrationSignature = (headers: Headers, payload: RegisterRequest): boolean => {
+export const isValidSignature = (headers: Headers, pubkeyBase64: string): boolean => {
   const [clientTime, requestId, contentSha256, signatureHeader] = _getPredefinedHeaderValues(headers);
   if (!signatureHeader || !signatureHeader.startsWith('Signature ')) {
     throw new Error('Missing or malformed signature header');
@@ -62,12 +62,12 @@ const _isValidRegistrationSignature = (headers: Headers, payload: RegisterReques
     throw new Error('Invalid signature length');
   }
   // convert devicePublicKey from base64 to Uint8Array
-  const devicePublicKey = base64ToUint8Array(payload.devicePublicKey);
+  const devicePublicKey = base64ToUint8Array(pubkeyBase64);
   if (devicePublicKey.length !== ML_DSA_PUBLIC_KEY_SIZE) {
     throw new Error('Invalid public key length');
   }
   // verify signature
-  const messageToVerify = toUint8Array(['POST', '/register', contentSha256, clientTime, requestId].join('\n'));
+  const messageToVerify = toUint8Array([contentSha256, clientTime, requestId].join('\n'));
   return CryptoPQ.verifySignature(devicePublicKey, messageToVerify, signatureBytes);
 };
 
@@ -90,9 +90,8 @@ const _isUsernameReserved = (username: string): boolean => {
 export const validateUsername = (username: string): boolean => {
   if (typeof username !== 'string') return false;
   if (_isUsernameReserved(username)) return false;
-  const trimmed = username.trim();
   const rules = C.username;
-  return trimmed.length >= rules.minLength && trimmed.length <= rules.maxLength && rules.pattern.test(trimmed);
+  return username.length >= rules.minLength && username.length <= rules.maxLength && rules.pattern.test(username);
 };
 
 export const validateDeviceName = (deviceName: string): boolean => {
@@ -117,8 +116,18 @@ export const validateDeviceEnvelopes = (envelopes: any[]): boolean => {
   );
 };
 
+const _isValidLoginPayload = (body: LoginRequest): boolean => {
+  for (const field of C.deviceLoginPayload.requiredFields) {
+    if (!(field in body)) {
+      return false;
+    }
+  }
+  if (!validateUsername(body.username)) return false;
+  if (!validateAccountId(body.deviceId)) return false;
+  return true;
+};
 export const validateRegistrationRequest = async (headers: Headers, body: RegisterRequest): Promise<boolean> => {
-  const validHeaders = _isValidRegistrationHeaders(headers);
+  const validHeaders = _isValidSignedHeaders(headers);
   if (!validHeaders) {
     throw new Error('Invalid headers for registration');
   }
@@ -132,9 +141,27 @@ export const validateRegistrationRequest = async (headers: Headers, body: Regist
   if (calculatedSha256 !== contentSha256) {
     throw new Error('Content SHA256 mismatch');
   }
-  const isValidSignature = _isValidRegistrationSignature(headers, body);
-  if (!isValidSignature) {
+  const isValid = isValidSignature(headers, body.devicePublicKey);
+  if (!isValid) {
     throw new Error('Invalid signature for registration');
+  }
+  return true;
+};
+
+export const validateLoginRequest = async (headers: Headers, body: LoginRequest): Promise<boolean> => {
+  const validHeaders = _isValidSignedHeaders(headers);
+  if (!validHeaders) {
+    throw new Error('Invalid headers for login');
+  }
+  const validPayload = _isValidLoginPayload(body);
+  if (!validPayload) {
+    throw new Error('Invalid login payload');
+  }
+  const payloadString = generateCanonicalJSON(body);
+  const calculatedSha256 = await CryptoUtils.sha256(payloadString, 'hex');
+  const contentSha256 = headers.get('Content-SHA256');
+  if (calculatedSha256 !== contentSha256) {
+    throw new Error('Content SHA256 mismatch');
   }
   return true;
 };

@@ -16,7 +16,7 @@ export type DeviceEnvelope = {
 // Credentials for a device including keys and seeds - never leave the client
 export type DeviceCredentials = {
   deviceId: string;
-  deviceName: string;
+  deviceName?: string;
   dsaPublicKeyBase64: string; // base64 encoded
   dsaSecretKey: Uint8Array;
   kemPublicKey: Uint8Array;
@@ -31,7 +31,6 @@ export class DeviceUtils {
   private constructor() {} // Prevent instantiation
 
   public static async generateNewDeviceCredential(
-    deviceName: string,
     masterKey: Uint8Array,
     kemSeed?: Uint8Array,
     dsaSeed?: Uint8Array,
@@ -48,14 +47,11 @@ export class DeviceUtils {
     const encryptedMasterKey = await AEAD.encrypt(aeadSharedKey, masterKey as Uint8Array<ArrayBuffer>);
 
     const dsaKeys = CryptoPQ.generateDsaKeys(finalDsaSeed);
-
-    const name = deviceName.trim();
     // Derived device ID from DSA public key - verifiable identity
     const deviceId = (await CryptoUtils.sha256(dsaKeys.publicKey as Uint8Array<ArrayBuffer>, 'hex')) as string;
 
     return {
       deviceId,
-      deviceName: name,
       dsaPublicKeyBase64: uint8ArrayToBase64(dsaKeys.publicKey),
       dsaSecretKey: dsaKeys.secretKey,
       kemPublicKey: kemKeys.publicKey,
@@ -83,4 +79,23 @@ export class DeviceUtils {
     const encryptedDL = await AEAD.encrypt(aeadMasterKey, deviceListUint8Array as Uint8Array<ArrayBuffer>);
     return uint8ArrayToBase64(encryptedDL);
   };
+
+  public static async getDeviceCredentialsFromSeeds(
+    kemSeed: Uint8Array,
+    dsaSeed: Uint8Array,
+  ): Promise<DeviceCredentials> {
+    const kemKeys = CryptoPQ.generateKemKeys(kemSeed);
+    const dsaKeys = CryptoPQ.generateDsaKeys(dsaSeed);
+    const deviceId = (await CryptoUtils.sha256(dsaKeys.publicKey as Uint8Array<ArrayBuffer>, 'hex')) as string;
+    return {
+      deviceId,
+      dsaPublicKeyBase64: uint8ArrayToBase64(dsaKeys.publicKey),
+      dsaSecretKey: dsaKeys.secretKey,
+      kemPublicKey: kemKeys.publicKey,
+      _seeds: {
+        kem: kemSeed,
+        dsa: dsaSeed,
+      },
+    };
+  }
 }

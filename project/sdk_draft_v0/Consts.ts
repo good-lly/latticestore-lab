@@ -95,8 +95,8 @@ export const TIMESTAMP_TOLERANCE_MS = 5 * 60 * 1000; // 5 minutes
 
 export const VALIDATION_RULES = {
   username: {
-    minLength: 3,
-    maxLength: 64,
+    minLength: 5,
+    maxLength: 256,
     pattern: /^[a-zA-Z0-9_-]+$/,
     description: 'Alphanumeric, underscore, and hyphen only',
   },
@@ -114,7 +114,7 @@ export const VALIDATION_RULES = {
   },
   deviceName: {
     minLength: 3,
-    maxLength: 64,
+    maxLength: 128,
     pattern: /^[\x20-\x7E]+$/,
     description: 'Printable ASCII characters',
   },
@@ -127,10 +127,13 @@ export const VALIDATION_RULES = {
     minCount: 2,
     requiredFields: ['deviceId', 'dsaPublicKeyBase64', 'encryptedMasterKeyHex', 'cipherTextHex'],
   },
-  deviceRegistrationHeaders: {
+  signedHeaders: {
     requiredFields: ['Content-SHA256', 'X-Timestamp', 'X-Request-ID', 'X-Signature'],
   },
   deviceRegistrationPayload: {
     requiredFields: ['username', 'devicePublicKey', 'deviceEnvelopes', 'deviceListFile', 'devices'],
+  },
+  deviceLoginPayload: {
+    requiredFields: ['username', 'deviceId'],
   },
 } as const;
