@@ -92,6 +92,8 @@ export const RESERVED_USERNAMES = [
   'receipt',
 ];
 export const TIMESTAMP_TOLERANCE_MS = 5 * 60 * 1000; // 5 minutes
+export const TOKEN_EXPIRATION_SECONDS = 3600; // 1 hour
+export const TOKEN_LENGTH_BYTES = 64;
 
 export const VALIDATION_RULES = {
   username: {

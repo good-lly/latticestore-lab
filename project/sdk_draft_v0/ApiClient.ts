@@ -1,6 +1,6 @@
 import { CryptoPQ } from './CryptoPQ';
 import { CryptoUtils } from './CryptoUtils';
-import { DeviceEnvelope } from './DeviceUtils';
+import { DeviceEnvelope, ExtendedDeviceEnvelope } from './DeviceUtils';
 import { uint8ArrayToBase64, generateCanonicalJSON } from './Helpers';
 export type LoginRequest = {
   username: string;
@@ -10,9 +10,11 @@ export type LoginRequest = {
 export type LoginResponse = {
   ok: boolean;
   accountId: string;
-  deviceListFile: string;
-  deviceEnvelope: DeviceEnvelope;
+  deviceEnvelope: ExtendedDeviceEnvelope;
+  authToken: string;
   message?: string;
+  code: number;
+  reqId: string;
 };
 
 export type RegisterRequest = {
@@ -28,7 +30,9 @@ export type RegisterRequest = {
 export type RegisterResponse = {
   ok: boolean;
   accountId: string;
-  rootFile: { key: string; etag: string };
+  messages: string[];
+  code: number;
+  reqId: string;
   message?: string;
 };
 

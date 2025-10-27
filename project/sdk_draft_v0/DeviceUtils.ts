@@ -1,7 +1,7 @@
 import { CryptoPQ } from './CryptoPQ';
 import { CryptoUtils } from './CryptoUtils';
 import { AEAD, RawAEADKey } from './CryptoAEAD';
-import { uint8ArrayToHex, uint8ArrayToBase64, toUint8Array } from './Helpers';
+import { uint8ArrayToHex, uint8ArrayToBase64, toUint8Array, base64ToUint8Array, hexToUint8Array } from './Helpers';
 
 export const RECOVERY_DEVICE_NAME = 'RECOVERY_DEVICE';
 
@@ -11,6 +11,14 @@ export type DeviceEnvelope = {
   dsaPublicKeyBase64: string; // base64 encoded
   encryptedMasterKeyHex: string; // hex - AES-GCM encrypted
   cipherTextHex: string; // hex encoded - ciphertext from KEM encapsulation
+};
+
+export type ExtendedDeviceEnvelope = {
+  deviceId: string;
+  dsaPublicKeyBase64: string; // base64 encoded
+  encryptedMasterKeyHex: string; // hex - AES-GCM encrypted
+  cipherTextHex: string; // hex encoded - ciphertext from KEM encapsulation
+  deviceListBase64: string; // base64 encoded encrypted device list
 };
 
 // Credentials for a device including keys and seeds - never leave the client
@@ -98,4 +106,30 @@ export class DeviceUtils {
       },
     };
   }
+
+  public static decryptDeviceList = async (encryptedDeviceListBase64: string, masterKey: Uint8Array) => {
+    const encryptedDLUint8Array = base64ToUint8Array(encryptedDeviceListBase64);
+    const aeadMasterKey = await AEAD.importAEADKey(masterKey as RawAEADKey);
+    const decryptedDL = await AEAD.decrypt(aeadMasterKey, encryptedDLUint8Array);
+    return JSON.parse(new TextDecoder().decode(decryptedDL)) as Array<{
+      deviceId: string;
+      deviceName?: string;
+      kemPublicKeyHex: string;
+    }>;
+  };
+
+  public static recoverMasterKey = async (
+    envelope: ExtendedDeviceEnvelope | DeviceEnvelope,
+    kemSeed: Uint8Array,
+  ): Promise<Uint8Array> => {
+    const kemKeys = CryptoPQ.generateKemKeys(kemSeed);
+    const cipherText = hexToUint8Array(envelope.cipherTextHex);
+    const sharedSecret = CryptoPQ.decapsulate(cipherText, kemKeys.secretKey);
+    const aeadSharedKey = await AEAD.importAEADKey(sharedSecret as RawAEADKey);
+    sharedSecret.fill(0); // Clear shared secret from memory
+
+    const encryptedMasterKeyArray = hexToUint8Array(envelope.encryptedMasterKeyHex);
+    const masterKey = await AEAD.decrypt(aeadSharedKey, encryptedMasterKeyArray);
+    return masterKey;
+  };
 }

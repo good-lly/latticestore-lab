@@ -86,42 +86,17 @@ api.get('clearall', async c => {
 
 // TBD rework
 api.post('login', async c => {
-  const { userId, userPasswordHash, deviceName } = await c.req.json();
-  const users = c.get('users');
-  const s3client = c.get('s3');
-  if (!users || !s3client) {
-    return c.json({ ok: false, message: 'Keyv or S3 client not initialized' }, 500);
+  const body = await c.req.json();
+  const headers = c.req.raw.headers;
+  console.log('Register headers: ', headers);
+  const ls = c.get('lattice');
+  if (!ls) {
+    return c.json({ ok: false, message: 'Service not initialized' }, 500);
   }
-  let user = await users.get(`user:${userId}`);
-  console.log('user is: ', user);
-  if (!user || user.userPasswordHash !== userPasswordHash) {
-    return c.json({ ok: false, message: 'User not found' }, 404);
-  }
-  const userDevices = user.devices;
-  const deviceExists = userDevices.includes(deviceName);
-  if (!deviceExists) {
-    userDevices.push(deviceName);
-    await users.set(`user:${userId}`, { ...user, devices: userDevices });
-  }
-  const bytesUsed = user.bytesUsed;
-  const bytesLimit = user.bytesLimit;
-  const percentageUsed = (bytesUsed / bytesLimit) * 100;
-  const limited = user.limited;
-  const remainingBytes = Math.max(0, bytesLimit - bytesUsed);
-
-  const newAuthToken = getRandomAuthToken();
-  const tokens = c.get('tokens');
-  await tokens.delete(`user:${userId}`); // Invalidate previous token
-  await tokens.set(`user:${userId}`, newAuthToken);
-
-  return c.json({
-    ok: true,
-    message: 'Login successful',
-    token: newAuthToken,
-    user: { userId, deviceName, bytesUsed, bytesLimit, percentageUsed, limited, remainingBytes },
-    // data: userRootfileData,
-    // dataEtag: userRootFileEtag,
-  });
+  const loginResponse = await ls.login(headers, body);
+  console.log('Login response: ', loginResponse);
+  c.header('x-request-id', headers.get('x-request-id'));
+  return c.json(loginResponse);
 });
 
 // TBD rework

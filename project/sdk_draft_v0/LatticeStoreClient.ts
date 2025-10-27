@@ -1,9 +1,9 @@
 'use strict';
 
-import { signedRequest, RegisterRequest, LoginRequest } from './ApiClient';
+import { signedRequest, RegisterRequest, LoginRequest, LoginResponse } from './ApiClient';
 import { CryptoUtils } from './CryptoUtils';
 import { AEAD } from './CryptoAEAD';
-import { DeviceEnvelope, DeviceUtils, RECOVERY_DEVICE_NAME } from './DeviceUtils';
+import { DeviceEnvelope, ExtendedDeviceEnvelope, DeviceUtils, RECOVERY_DEVICE_NAME } from './DeviceUtils';
 
 export class LatticeStoreClient {
   public async registerNewAccount(
@@ -34,16 +34,17 @@ export class LatticeStoreClient {
         devices: [thisDeviceCredentials.deviceId, recoveryDevice.deviceId],
         email: email?.trim(),
       };
-      const request = await signedRequest(
+      const response = await signedRequest(
         `${serviceUrl}/register`,
         registerPayload,
         thisDeviceCredentials.dsaSecretKey,
       );
-      if (!request.ok) {
-        throw new Error(request.message || 'Registration failed');
+      if (!response.ok) {
+        throw new Error(response.message || 'Registration failed');
       }
       return {
-        accountId: request.accountId,
+        ok: response.ok,
+        accountId: response.accountId,
         deviceCredentials: thisDeviceCredentials,
         recoveryDeviceCredentials: recoveryDevice,
       };
@@ -52,7 +53,11 @@ export class LatticeStoreClient {
     }
   }
 
-  public async login(serviceUrl: string, username: string, thisDeviceMasterSeed: Uint8Array = new Uint8Array()) {
+  public async login(
+    serviceUrl: string,
+    username: string,
+    thisDeviceMasterSeed: Uint8Array = new Uint8Array(),
+  ): Promise<any> {
     try {
       const { kemSeed, dsaSeed } = CryptoUtils.deriveSeeds(thisDeviceMasterSeed);
       const thisDeviceCredentials = await DeviceUtils.getDeviceCredentialsFromSeeds(kemSeed, dsaSeed);
@@ -60,10 +65,22 @@ export class LatticeStoreClient {
         username: username.trim(),
         deviceId: thisDeviceCredentials.deviceId,
       };
-      const request = await signedRequest(`${serviceUrl}/login`, loginPayload, thisDeviceCredentials.dsaSecretKey);
-      if (!request.ok) {
-        throw new Error(request.message || 'Login failed');
+      const response = (await signedRequest(
+        `${serviceUrl}/login`,
+        loginPayload,
+        thisDeviceCredentials.dsaSecretKey,
+      )) as LoginResponse;
+      if (!response.ok) {
+        throw new Error(response.message || 'Login failed');
       }
+      const masterKey = await DeviceUtils.recoverMasterKey(response.deviceEnvelope as ExtendedDeviceEnvelope, kemSeed);
+      return {
+        accountId: response.accountId,
+        deviceId: thisDeviceCredentials.deviceId,
+        masterKey: masterKey,
+        deviceList: await DeviceUtils.decryptDeviceList(response.deviceEnvelope.deviceListBase64 as string, masterKey),
+        authToken: response.authToken,
+      };
     } catch (error) {
       throw error;
     }

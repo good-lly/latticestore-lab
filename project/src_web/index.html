@@ -93,15 +93,8 @@
         },
         async login(username, password) {
           console.log('Logging in user:', username);
-          const loggedIn = await this.store.login(username, this.devicename, 'password', API_ENDPOINT);
-          if (loggedIn) {
-            this.username = username;
-            this.isLoggedIn = true;
-            this.authToken = this.store.authToken;
-          } else {
-            this.isLoggedIn = false;
-          }
-          return this.isLoggedIn;
+          const loggedIn = await lattice.login(API_ENDPOINT, username, new Uint8Array([1, 2, 3, 4, 5, 6, 7, 8, 9, 0]));
+          console.log('Login response:', loggedIn);
         },
         async logout() {
           this.username = '';
