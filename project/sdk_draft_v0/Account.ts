@@ -1,22 +1,22 @@
 export class Account {
   readonly accountId: string;
-  private accountAlias: string;
+  private username: string;
   readonly createdAt: Date;
   private lastLoginAt: Date;
 
-  constructor(accountId: string, accountAlias: string, createdAt: Date, lastLoginAt: Date) {
+  constructor(accountId: string, username: string, createdAt: Date, lastLoginAt: Date) {
     this.accountId = accountId;
-    this.accountAlias = accountAlias;
+    this.username = username;
     this.createdAt = createdAt;
     this.lastLoginAt = lastLoginAt;
   }
 
-  getAlias(): string {
-    return this.accountAlias;
+  getUsername(): string {
+    return this.username;
   }
 
-  setAlias(newAlias: string): void {
-    this.accountAlias = newAlias;
+  setUsername(newUsername: string): void {
+    this.username = newUsername;
   }
 
   getLastLogin(): Date {

@@ -1,4 +1,4 @@
-import { RedisConfig } from './LatticeStoreService';
+import { RedisConfig } from './Service';
 import { S3mini } from 's3mini';
 import { Keyv } from 'keyv';
 import { KeyvUpstash } from 'keyv-upstash';
@@ -103,6 +103,7 @@ export class Accounts {
           ),
         );
       }
+      await Promise.all(ops);
       console.log(`Account ${accountData.accountId} created successfully`, ops.length);
       return true;
     } catch (error) {

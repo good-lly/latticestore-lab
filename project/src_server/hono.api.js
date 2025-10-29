@@ -1,6 +1,6 @@
 import { Hono } from 'hono';
 import { streamSSE } from 'hono/streaming';
-import { LatticeStoreService } from '../dist/sdk/LatticeStoreService.js';
+import { LatticeStoreService } from '../dist/sdk/Service.js';
 
 const IO_GB = 10 * 1024 * 1024 * 1024; // 10 GB in bytes
 

@@ -30,10 +30,9 @@ export type RegisterRequest = {
 export type RegisterResponse = {
   ok: boolean;
   accountId: string;
-  messages: string[];
+  message: string;
   code: number;
   reqId: string;
-  message?: string;
 };
 
 export type UploadObjectRequest = {

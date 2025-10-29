@@ -51,7 +51,7 @@ export class LatticeStoreService {
 
       return {
         ok: account,
-        messages: ['Registration request', account ? 'successful' : 'failed'],
+        message: `Registration request ${account ? 'successful' : 'failed'}`,
         reqId: headers.get('X-Request-ID') || '',
         accountId: newAccountId,
         code: 200,
@@ -61,9 +61,7 @@ export class LatticeStoreService {
       return {
         ok: false,
         accountId: '',
-        messages: [
-          `Registration request validation failed: ${error instanceof Error ? error.message : 'unknown error'}`,
-        ],
+        message: `Registration request validation failed: ${error instanceof Error ? error.message : 'unknown error'}`,
         reqId: headers.get('X-Request-ID') || '',
         code: 400,
       };

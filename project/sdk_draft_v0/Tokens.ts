@@ -2,7 +2,7 @@ import { Keyv } from 'keyv';
 import { KeyvUpstash } from 'keyv-upstash';
 import { CryptoUtils } from './CryptoUtils';
 import { uint8ArrayToHex } from './Helpers';
-import { RedisConfig } from './LatticeStoreService';
+import { RedisConfig } from './Service';
 import { TOKEN_EXPIRATION_SECONDS, TOKEN_LENGTH_BYTES } from './Consts';
 
 const TOKEN_NAMESPACE = 'TOKENS';
