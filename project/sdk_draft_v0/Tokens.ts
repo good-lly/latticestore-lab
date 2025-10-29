@@ -23,6 +23,7 @@ export class Tokens {
   }
 
   public async generateTokenForDevice(deviceId: string): Promise<string> {
+    await this.revokeToken(deviceId); // Revoke any existing token
     const token = uint8ArrayToHex(CryptoUtils.generateRandomBytes(TOKEN_LENGTH_BYTES));
     await this._tokenKeyv.set(deviceId, token, TOKEN_EXPIRATION_SECONDS);
     return token;

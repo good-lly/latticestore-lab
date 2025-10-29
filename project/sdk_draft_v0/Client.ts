@@ -3,9 +3,16 @@
 import { signedRequest, RegisterRequest, LoginRequest, LoginResponse } from './ApiClient';
 import { CryptoUtils } from './CryptoUtils';
 import { AEAD } from './CryptoAEAD';
-import { DeviceEnvelope, ExtendedDeviceEnvelope, DeviceUtils, RECOVERY_DEVICE_NAME } from './DeviceUtils';
+import {
+  DeviceEnvelope,
+  ExtendedDeviceEnvelope,
+  DeviceUtils,
+  RECOVERY_DEVICE_NAME,
+  DeviceCredentials,
+} from './DeviceUtils';
 import { Account } from './Account';
 import { base64ToUint8Array, fromUint8Array } from './Helpers';
+import { FeatureType } from './features/Features';
 
 export class LatticeStoreClient {
   public async registerNewAccount(
@@ -32,7 +39,7 @@ export class LatticeStoreClient {
         username: username.trim(),
         devicePublicKey: thisDeviceCredentials.dsaPublicKeyBase64,
         deviceEnvelopes: [thisDeviceCredentials.envelope as DeviceEnvelope, recoveryDevice.envelope as DeviceEnvelope], // include device envelopes
-        deviceListFile: await DeviceUtils.buildDeviceList([thisDeviceCredentials, recoveryDevice], masterKey),
+        deviceListFile: await DeviceUtils.buildDeviceList(new Set([thisDeviceCredentials, recoveryDevice]), masterKey),
         devices: [thisDeviceCredentials.deviceId, recoveryDevice.deviceId],
         email: email?.trim(),
       };
@@ -80,19 +87,30 @@ export class LatticeStoreClient {
       const masterKey = await DeviceUtils.recoverMasterKey(response.deviceEnvelope as ExtendedDeviceEnvelope, kemSeed);
       const aeadKey = await AEAD.importAEADKey(masterKey);
       masterKey.fill(0);
-      const deviceList = JSON.parse(
-        fromUint8Array(await AEAD.decrypt(aeadKey, base64ToUint8Array(response.deviceEnvelope.deviceListBase64))),
-      );
+      const deviceList = new Set(
+        JSON.parse(
+          fromUint8Array(await AEAD.decrypt(aeadKey, base64ToUint8Array(response.deviceEnvelope.deviceListBase64))),
+        ),
+      ) as Set<DeviceCredentials>;
       const featuresList = response.featuresList
-        ? JSON.parse(fromUint8Array(await AEAD.decrypt(aeadKey, base64ToUint8Array(response.featuresList))))
-        : [];
+        ? (new Set<FeatureType>(
+            JSON.parse(fromUint8Array(await AEAD.decrypt(aeadKey, base64ToUint8Array(response.featuresList)))),
+          ) as Set<FeatureType>)
+        : new Set<FeatureType>();
       if (!response.accountInfo.username || response.accountInfo.username !== username.trim()) {
         throw new Error('Username mismatch during login');
       }
       if (thisDeviceCredentials.deviceId !== response.deviceEnvelope.deviceId) {
         throw new Error('Device ID mismatch during login');
       }
-      return new Account(thisDeviceCredentials, response.accountInfo, deviceList, featuresList, aeadKey);
+      return new Account(
+        thisDeviceCredentials,
+        response.accountInfo,
+        deviceList,
+        featuresList,
+        aeadKey,
+        response.authToken,
+      );
     } catch (error) {
       throw error;
     }
