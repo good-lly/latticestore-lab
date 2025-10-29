@@ -12,7 +12,7 @@ const IO_GB = 10 * 1024 * 1024 * 1024; // 10 GB in bytes
 // }
 
 const api = new Hono({ strict: false });
-const latticeService = api.use('*', async (c, next) => {
+api.use('*', async (c, next) => {
   const { REDIS_URL, REDIS_TOKEN, USER_STORAGE_QUOTA, S3_ACCESS_KEY_ID, S3_SECRET_ACCESS_KEY, S3_ENDPOINT, S3_REGION } =
     c.env;
 

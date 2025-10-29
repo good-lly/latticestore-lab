@@ -1,29 +1,29 @@
+import { AccountData } from './Accounts';
+import { AEADCryptoKey } from './CryptoAEAD';
+import { DeviceCredentials } from './DeviceUtils';
+
 export class Account {
-  readonly accountId: string;
-  private username: string;
-  readonly createdAt: Date;
-  private lastLoginAt: Date;
+  readonly _accountId: string;
+  private _username: string;
+  private _deviceList: any[];
+  private _featuresList: any[];
+  readonly _createdAt: Date;
+  private _updatedAt: Date;
+  readonly _aeadKey: AEADCryptoKey;
 
-  constructor(accountId: string, username: string, createdAt: Date, lastLoginAt: Date) {
-    this.accountId = accountId;
-    this.username = username;
-    this.createdAt = createdAt;
-    this.lastLoginAt = lastLoginAt;
-  }
-
-  getUsername(): string {
-    return this.username;
-  }
-
-  setUsername(newUsername: string): void {
-    this.username = newUsername;
-  }
-
-  getLastLogin(): Date {
-    return this.lastLoginAt;
-  }
-
-  updateLastLogin(newLoginDate: Date): void {
-    this.lastLoginAt = newLoginDate;
+  constructor(
+    deviceCredentials: DeviceCredentials,
+    accountInfo: AccountData,
+    deviceList: any[],
+    featuresList: any[],
+    key: AEADCryptoKey,
+  ) {
+    this._accountId = deviceCredentials.deviceId;
+    this._username = accountInfo.username;
+    this._deviceList = deviceList;
+    this._featuresList = featuresList;
+    this._createdAt = new Date(accountInfo.createdAt);
+    this._updatedAt = new Date(accountInfo.updatedAt);
+    this._aeadKey = key;
   }
 }

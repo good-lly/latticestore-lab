@@ -121,15 +121,11 @@ export class DeviceUtils {
   public static recoverMasterKey = async (
     envelope: ExtendedDeviceEnvelope | DeviceEnvelope,
     kemSeed: Uint8Array,
-  ): Promise<Uint8Array> => {
+  ): Promise<RawAEADKey> => {
     const kemKeys = CryptoPQ.generateKemKeys(kemSeed);
-    const cipherText = hexToUint8Array(envelope.cipherTextHex);
-    const sharedSecret = CryptoPQ.decapsulate(cipherText, kemKeys.secretKey);
+    const sharedSecret = CryptoPQ.decapsulate(hexToUint8Array(envelope.cipherTextHex), kemKeys.secretKey);
     const aeadSharedKey = await AEAD.importAEADKey(sharedSecret as RawAEADKey);
     sharedSecret.fill(0); // Clear shared secret from memory
-
-    const encryptedMasterKeyArray = hexToUint8Array(envelope.encryptedMasterKeyHex);
-    const masterKey = await AEAD.decrypt(aeadSharedKey, encryptedMasterKeyArray);
-    return masterKey;
+    return (await AEAD.decrypt(aeadSharedKey, hexToUint8Array(envelope.encryptedMasterKeyHex))) as RawAEADKey;
   };
 }

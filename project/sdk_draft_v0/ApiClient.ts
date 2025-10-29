@@ -1,3 +1,4 @@
+import { AccountData } from './Accounts';
 import { CryptoPQ } from './CryptoPQ';
 import { CryptoUtils } from './CryptoUtils';
 import { DeviceEnvelope, ExtendedDeviceEnvelope } from './DeviceUtils';
@@ -9,8 +10,9 @@ export type LoginRequest = {
 
 export type LoginResponse = {
   ok: boolean;
-  accountId: string;
+  accountInfo: AccountData;
   deviceEnvelope: ExtendedDeviceEnvelope;
+  featuresList: string | null;
   authToken: string;
   message?: string;
   code: number;
@@ -22,6 +24,7 @@ export type RegisterRequest = {
   devicePublicKey: string;
   deviceEnvelopes: DeviceEnvelope[];
   deviceListFile: string;
+  featuresList?: string | undefined;
   devices: string[];
   email?: string | undefined;
   otherPublicUserData?: Record<string, any> | undefined;
@@ -29,7 +32,6 @@ export type RegisterRequest = {
 
 export type RegisterResponse = {
   ok: boolean;
-  accountId: string;
   message: string;
   code: number;
   reqId: string;

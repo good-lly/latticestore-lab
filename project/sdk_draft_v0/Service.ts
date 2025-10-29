@@ -53,14 +53,12 @@ export class LatticeStoreService {
         ok: account,
         message: `Registration request ${account ? 'successful' : 'failed'}`,
         reqId: headers.get('X-Request-ID') || '',
-        accountId: newAccountId,
         code: 200,
       };
     } catch (error) {
       // throw new Error(`Registration request validation failed: ${(error as Error).message}`);
       return {
         ok: false,
-        accountId: '',
         message: `Registration request validation failed: ${error instanceof Error ? error.message : 'unknown error'}`,
         reqId: headers.get('X-Request-ID') || '',
         code: 400,
@@ -77,21 +75,24 @@ export class LatticeStoreService {
       if (!accountId || accountId.length === 0 || accountId === null) {
         throw new Error('Username does not exist');
       }
-      const deviceEnvelope = await this._accounts.getDeviceEnvelope(accountId, body.deviceId);
-      if (!deviceEnvelope) {
-        throw new Error('Device does not exist');
+      const [deviceEnvelope, accountInfo, featuresList] = await Promise.all([
+        this._accounts.getDeviceEnvelope(accountId, body.deviceId),
+        this._accounts.getAccountData(accountId),
+        this._accounts.getFeaturesList(accountId),
+      ]);
+      if (!deviceEnvelope || !accountInfo) {
+        throw new Error('Fuckup, Device or account does not exist');
       }
-      const isValidSig = isValidSignature(headers, deviceEnvelope.dsaPublicKeyBase64);
-      if (!isValidSig) {
+      if (!isValidSignature(headers, deviceEnvelope.dsaPublicKeyBase64)) {
         throw new Error('Invalid signature for login');
       }
-      const authToken = await this._tokens.generateTokenForDevice(body.deviceId);
 
       return {
         ok: true,
-        accountId,
+        accountInfo: accountInfo as AccountData,
         deviceEnvelope: deviceEnvelope,
-        authToken: authToken,
+        featuresList: featuresList,
+        authToken: await this._tokens.generateTokenForDevice(body.deviceId),
         reqId: headers.get('X-Request-ID') || '',
         code: 200,
       };

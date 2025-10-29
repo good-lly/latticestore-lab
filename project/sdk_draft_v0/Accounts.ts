@@ -19,8 +19,12 @@ const DEVICE_NAMESPACE = 'DEVICE';
 const USERNAME_ID = 'USER';
 
 const _getAccountInfoS3Key = (accountId: string) => `${ACCOUNT_NAMESPACE}/${accountId}.json`;
-const _usernameToAccountIdS3Key = (username: string) => `${USERNAME_ID}/${username}.txt`;
 const _usernameToAccountId = (username: string) => `${USERNAME_ID}::${username}`;
+const _usernameToAccountIdS3Key = (username: string) => `${USERNAME_ID}/${username}.txt`;
+
+const _accountFeaturesListS3Key = (accountId: string) => `${accountId}/.system/features`;
+const _accountFeaturesListRedisKey = (accountId: string) => `${accountId}::features`;
+
 const _getDeviceEnvelopeS3Key = (accountId: string, deviceId: string) =>
   `${accountId}/.system/.devices/${deviceId}.json`;
 const _getDeviceEnvelopeRedisKey = (accountId: string, deviceId: string) => `${accountId}::device::${deviceId}`;
@@ -78,12 +82,15 @@ export class Accounts {
 
   public async create(accountData: AccountData, envelopes: DeviceEnvelope[], deviceListFile: string): Promise<boolean> {
     try {
-      // const deviceListBuffer = base64ToBuffer(deviceListFile);
+      // on account create, we need to store:
+      // 1. account data (account informations) in redis and s3
+      // 2. username to accountId mapping in redis and s3
+      // 3. each device envelope in redis and s3, with deviceListBase64 included
       const ops = [
         this._accountsRedis.set(accountData.accountId, accountData),
+        this._s3.putObject(_getAccountInfoS3Key(accountData.accountId), JSON.stringify(accountData)),
         this._accountsRedis.set(_usernameToAccountId(accountData.username), accountData.accountId),
         this._s3.putObject(_usernameToAccountIdS3Key(accountData.username), accountData.accountId),
-        this._s3.putObject(_getAccountInfoS3Key(accountData.accountId), JSON.stringify(accountData)),
       ];
       for (const envelope of envelopes) {
         const extendedEnvelope = {
@@ -162,6 +169,41 @@ export class Accounts {
       if (s3Object) {
         const envelope: DeviceEnvelope = JSON.parse(s3Object);
         return envelope.dsaPublicKeyBase64;
+      }
+    } catch (error) {
+      return null;
+    }
+    return null;
+  }
+
+  public async getAccountData(accountId: string): Promise<AccountData | null> {
+    const accountData: AccountData | undefined = await this._accountsRedis.get(accountId);
+    if (accountData !== undefined) {
+      return accountData;
+    }
+    // Fallback to S3 check
+    try {
+      const key = _getAccountInfoS3Key(accountId);
+      const s3Object = await this._s3.getObject(key);
+      if (s3Object) {
+        return JSON.parse(s3Object);
+      }
+    } catch (error) {
+      return null;
+    }
+    return null;
+  }
+
+  public async getFeaturesList(accountId: string): Promise<string | null> {
+    const featuresList: string | undefined = await this._accountsRedis.get(_accountFeaturesListRedisKey(accountId));
+    if (featuresList !== undefined) {
+      return featuresList;
+    }
+    try {
+      const key = _accountFeaturesListS3Key(accountId);
+      const s3Object = await this._s3.getObject(key);
+      if (s3Object) {
+        return s3Object;
       }
     } catch (error) {
       return null;
