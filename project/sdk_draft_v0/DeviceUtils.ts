@@ -76,8 +76,8 @@ export class DeviceUtils {
     };
   }
 
-  public static buildDeviceList = async (devices: Set<DeviceCredentials>, masterKey: Uint8Array): Promise<string> => {
-    const deviceList = Array.from(devices).map(device => ({
+  public static buildDeviceList = async (devices: DeviceCredentials[], masterKey: Uint8Array): Promise<string> => {
+    const deviceList = devices.map(device => ({
       deviceId: device.deviceId,
       deviceName: device.deviceName,
       kemPublicKeyHex: uint8ArrayToHex(device.kemPublicKey),

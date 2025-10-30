@@ -2,7 +2,10 @@ import { AccountData } from './Accounts';
 import { CryptoPQ } from './CryptoPQ';
 import { CryptoUtils } from './CryptoUtils';
 import { DeviceEnvelope, ExtendedDeviceEnvelope } from './DeviceUtils';
-import { uint8ArrayToBase64, generateCanonicalJSON } from './Helpers';
+import { uint8ArrayToBase64, generateCanonicalJSON, fromUint8Array } from './Helpers';
+
+// ===== TYPES =====
+
 export type LoginRequest = {
   username: string;
   deviceId: string;
@@ -27,7 +30,7 @@ export type RegisterRequest = {
   featuresList?: string | undefined;
   devices: string[];
   email?: string | undefined;
-  otherPublicUserData?: Record<string, any> | undefined;
+  otherPublicUserData?: Record<string, string>[] | undefined;
 };
 
 export type RegisterResponse = {
@@ -58,66 +61,322 @@ export type ObjectResult = {
   reason?: string;
 };
 
-const _fetchJSON = async <T>(url: string, options: RequestInit, authToken?: string): Promise<T> => {
-  const headers = new Headers(options.headers);
-  const requestId = headers.get('X-Request-ID');
-  headers.set('Content-Type', 'application/json');
-  if (authToken) {
-    headers.set('Authorization', `Bearer ${authToken}`);
-  }
-  const response = await fetch(url, { ...options, headers });
-  if (requestId && response.headers.get('X-Request-ID') !== requestId) {
-    throw new Error('Request ID mismatch');
-  }
-  if (!response.ok) {
-    throw new Error(`HTTP ${response.status}: ${response.statusText}`);
-  }
+// ===== AUTH CONFIGURATION =====
 
-  return response.json() as Promise<T>;
+export type SignedAuth = {
+  type: 'signed';
+  secretSignKey: Uint8Array;
+  payload: any;
 };
 
-export const signedRequest = async (
+export type BearerAuth = {
+  type: 'bearer';
+  token: string;
+};
+
+export type AuthConfig = SignedAuth | BearerAuth;
+
+// ===== REQUEST OPTIONS =====
+
+export interface RequestOptions {
+  method?: 'GET' | 'POST' | 'PUT' | 'DELETE';
+  body?: any;
+  headers?: Record<string, string>;
+  auth?: AuthConfig;
+}
+
+// ===== RESPONSE PARSERS =====
+
+export class ResponseParser {
+  constructor(private response: Response) {}
+
+  /**
+   * Parse response as JSON
+   */
+  async json<T = any>(): Promise<T> {
+    return this.response.json() as Promise<T>;
+  }
+
+  /**
+   * Parse response as Uint8Array
+   */
+  async bytes(): Promise<Uint8Array> {
+    const arrayBuffer = await this.response.arrayBuffer();
+    return new Uint8Array(arrayBuffer);
+  }
+
+  /**
+   * Parse response as text
+   */
+  async text(): Promise<string> {
+    return this.response.text();
+  }
+
+  /**
+   * Parse response as blob
+   */
+  async blob(): Promise<Blob> {
+    return this.response.blob();
+  }
+
+  /**
+   * Get raw response
+   */
+  raw(): Response {
+    return this.response;
+  }
+
+  /**
+   * Get response headers
+   */
+  get headers(): Headers {
+    return this.response.headers;
+  }
+
+  /**
+   * Get response status
+   */
+  get status(): number {
+    return this.response.status;
+  }
+
+  /**
+   * Get response ok status
+   */
+  get ok(): boolean {
+    return this.response.ok;
+  }
+}
+// ===== HELPER FUNCTIONS =====
+
+/**
+ * Prepare headers and body for signed authentication
+ */
+const prepareSignedAuth = async (
+  signedAuth: SignedAuth,
+  headers: Record<string, string>,
+): Promise<{ headers: Record<string, string>; body: string; requestId: string }> => {
+  const bodyJson = generateCanonicalJSON(signedAuth.payload);
+  const contentSha256 = await CryptoUtils.sha256(bodyJson, 'hex');
+  const timestamp = Date.now().toString();
+  const requestId = CryptoUtils.generateRandomUUID();
+
+  const stringToSign = [contentSha256, timestamp, requestId].join('\n');
+  const signature = uint8ArrayToBase64(CryptoPQ.sign(signedAuth.secretSignKey, stringToSign));
+
+  return {
+    headers: {
+      ...headers,
+      'Content-SHA256': contentSha256 as string,
+      'X-Timestamp': timestamp,
+      'X-Request-ID': requestId,
+      'X-Signature': `Signature ${signature}`,
+      'Content-Type': 'application/json',
+    },
+    body: bodyJson,
+    requestId,
+  };
+};
+
+/**
+ * Prepare headers for bearer token authentication
+ */
+const prepareBearerAuth = (
+  token: string,
+  headers: Record<string, string>,
+): { headers: Record<string, string>; requestId: string } => {
+  let reqId = CryptoUtils.generateRandomUUID();
+  return {
+    headers: {
+      ...headers,
+      'X-Request-ID': reqId,
+      Authorization: `Bearer ${token}`,
+    },
+    requestId: reqId,
+  };
+};
+
+/**
+ * Serialize body to string based on type
+ */
+const serializeBody = (
+  body: any,
+  headers: Record<string, string>,
+): { body: string; headers: Record<string, string> } => {
+  if (body instanceof Uint8Array) {
+    return {
+      body: fromUint8Array(body),
+      headers: {
+        ...headers,
+        'Content-Type': headers['Content-Type'] || 'application/octet-stream',
+      },
+    };
+  }
+
+  if (typeof body === 'string') {
+    return {
+      body,
+      headers: {
+        ...headers,
+        'Content-Type': headers['Content-Type'] || 'text/plain',
+      },
+    };
+  }
+
+  return {
+    body: JSON.stringify(body),
+    headers: {
+      ...headers,
+      'Content-Type': headers['Content-Type'] || 'application/json',
+    },
+  };
+};
+
+/**
+ * Validate request/response ID match
+ */
+const validateRequestId = (response: Response, expectedRequestId: string): void => {
+  const responseRequestId = response.headers.get('X-Request-ID');
+  if (responseRequestId !== expectedRequestId) {
+    throw new Error('Request ID mismatch');
+  }
+};
+
+/**
+ * Handle error response
+ */
+const handleErrorResponse = async (response: Response): Promise<never> => {
+  const errorText = await response.text().catch(() => response.statusText);
+  throw new Error(`HTTP ${response.status}: ${errorText}`);
+};
+
+// ===== CORE FETCH FUNCTION =====
+const _fetchRequest = async (url: string, options: RequestOptions = {}): Promise<ResponseParser> => {
+  const { method = 'GET', body, headers: customHeaders = {}, auth } = options;
+
+  let headers = { ...customHeaders };
+  let requestBody: string | undefined;
+  let requestId: string = '';
+
+  // Handle authentication
+  if (auth?.type === 'signed') {
+    const prepared = await prepareSignedAuth(auth, headers);
+    headers = prepared.headers;
+    requestBody = prepared.body;
+    requestId = prepared.requestId;
+  } else if (auth?.type === 'bearer') {
+    const prepared = prepareBearerAuth(auth.token, headers);
+    headers = prepared.headers;
+    requestId = prepared.requestId;
+  }
+
+  // Handle body for non-signed requests
+  if (body !== undefined && (!auth || auth.type === 'bearer')) {
+    const serialized = serializeBody(body, headers);
+    requestBody = serialized.body;
+    headers = serialized.headers;
+  }
+
+  // Build fetch options
+  const fetchOptions: RequestInit = { method, headers };
+  if (requestBody !== undefined) {
+    fetchOptions.body = requestBody;
+  }
+
+  // Make the request
+  const response = await fetch(url, fetchOptions);
+
+  validateRequestId(response, requestId);
+
+  // Check response status
+  if (!response.ok) {
+    await handleErrorResponse(response);
+  }
+
+  return new ResponseParser(response);
+};
+
+// ===== CONVENIENCE FUNCTIONS =====
+
+/**
+ * Make a signed request (for registration/login)
+ */
+export const signedRequest = async <T = any>(
   url: string,
   payload: RegisterRequest | LoginRequest,
   secretSignKey: Uint8Array,
-): Promise<RegisterResponse | LoginResponse> => {
-  const body = generateCanonicalJSON(payload);
-  const contentSha256 = await CryptoUtils.sha256(body, 'hex');
-  const timestamp = Date.now().toString();
-  const requestId = CryptoUtils.generateRandomUUID();
-  const stringToSign = [contentSha256, timestamp, requestId].join('\n');
-  const headers: Record<string, any> = {
-    'Content-SHA256': contentSha256 as string,
-    'X-Timestamp': timestamp,
-    'X-Request-ID': requestId,
-    'X-Signature': `Signature ${uint8ArrayToBase64(CryptoPQ.sign(secretSignKey, stringToSign))}`,
-  };
-  return _fetchJSON<RegisterResponse | LoginResponse>(`${url}`, {
+): Promise<T> => {
+  const parser = await _fetchRequest(url, {
     method: 'POST',
-    headers,
-    body,
+    auth: {
+      type: 'signed',
+      secretSignKey,
+      payload,
+    },
   });
+
+  return parser.json<T>();
 };
 
-// export const apiLogin = async (
-//   serviceUrl: string,
-//   payload: LoginRequest,
-//   secretSignKey: Uint8Array,
-// ): Promise<LoginResponse> => {
-//   const body = generateCanonicalJSON(payload);
-//   const contentSha256 = await CryptoUtils.sha256(body, 'hex');
-//   const timestamp = Date.now().toString();
-//   const requestId = CryptoUtils.generateRandomUUID();
-//   const stringToSign = ['POST', '/login', contentSha256, timestamp, requestId].join('\n');
-//   const headers: Record<string, any> = {
-//     'Content-SHA256': contentSha256 as string,
-//     'X-Timestamp': timestamp,
-//     'X-Request-ID': requestId,
-//     'X-Signature': `Signature ${uint8ArrayToBase64(CryptoPQ.sign(secretSignKey, stringToSign))}`,
-//   };
-//   return _fetchJSON<LoginResponse>(`${serviceUrl}/login`, {
-//     method: 'POST',
-//     headers,
-//     body,
-//   });
-// };
+/**
+ * Make an authenticated request with bearer token
+ */
+export const authRequest = async (
+  url: string,
+  method: 'GET' | 'POST' | 'PUT' | 'DELETE',
+  authToken: string,
+  body?: any,
+  headers?: Record<string, string>,
+): Promise<ResponseParser> => {
+  return _fetchRequest(url, {
+    method,
+    body,
+    headers,
+    auth: {
+      type: 'bearer',
+      token: authToken,
+    },
+  } as RequestOptions);
+};
+
+/**
+ * Simple GET request with auth token (returns JSON)
+ */
+export const get = async <T = any>(url: string, authToken: string, headers?: Record<string, string>): Promise<T> => {
+  const parser = await authRequest(url, 'GET', authToken, undefined, headers);
+  return parser.json<T>();
+};
+
+/**
+ * Simple POST request with auth token (returns JSON)
+ */
+export const post = async <T = any>(
+  url: string,
+  authToken: string,
+  body?: any,
+  headers?: Record<string, string>,
+): Promise<T> => {
+  const parser = await authRequest(url, 'POST', authToken, body, headers);
+  return parser.json<T>();
+};
+
+/**
+ * Simple PUT request with auth token (returns JSON)
+ */
+export const put = async <T = any>(
+  url: string,
+  authToken: string,
+  body?: any,
+  headers?: Record<string, string>,
+): Promise<T> => {
+  const parser = await authRequest(url, 'PUT', authToken, body, headers);
+  return parser.json<T>();
+};
+
+/**
+ * Simple DELETE request with auth token (returns JSON)
+ */
+export const del = async <T = any>(url: string, authToken: string, headers?: Record<string, string>): Promise<T> => {
+  const parser = await authRequest(url, 'DELETE', authToken, undefined, headers);
+  return parser.json<T>();
+};

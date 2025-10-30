@@ -35,66 +35,32 @@ api.use('*', async (c, next) => {
   await next();
 });
 api.get('list', async c => {
-  const keyvs = [c.get('users'), c.get('chunks'), c.get('tokens')];
-  const s3client = c.get('s3');
-  const data = [];
-  for (const keyv of keyvs) {
-    if (!keyv) {
-      return c.json({ ok: false, message: 'Keyv not initialized' }, 500);
-    }
-    for await (const [key, value] of keyv.iterator()) {
-      data.push({ namespace: keyv.namespace, key, value });
-    }
+  const ls = c.get('lattice');
+  if (!ls) {
+    return c.json({ ok: false, message: 'Service not initialized' }, 500);
   }
-  const list = await s3client.listObjects();
-
-  // You might want to implement this with Redis SCAN or maintain a list
-  return c.json({ ok: true, redisData: data, s3_objects: list });
-});
-
-api.get('delete/:userId', async c => {
-  const userId = c.req.param('userId');
-  const keyvs = [c.get('users'), c.get('chunks'), c.get('tokens')];
-  if (!keyvs) {
-    return c.json({ ok: false, message: 'Keyv not initialized' }, 500);
-  }
-  const resp = await Promise.all(keyvs.map(keyv => keyv.delete(`user:${userId}`)));
-  return c.json({ ok: true, message: 'Keys deleted successfully', data: resp });
+  const listAll = await ls.listAll();
+  return c.json(listAll);
 });
 
 api.get('clearall', async c => {
-  const keyvs = [c.get('users'), c.get('chunks'), c.get('tokens')];
-  const s3client = c.get('s3');
-  if (!keyvs || !s3client) {
-    return c.json({ ok: false, message: 'Keyv not initialized or S3 client not available' }, 500);
+  const ls = c.get('lattice');
+  if (!ls) {
+    return c.json({ ok: false, message: 'Service not initialized' }, 500);
   }
-
-  await Promise.all(keyvs.map(keyv => keyv.clear()));
-  // delete all objects ...
-  const s3list = await s3client.listObjects();
-  if (s3list.length !== 0) {
-    const objectNames = s3list.map(obj => obj.Key);
-    const respDelAll = await s3client.deleteObjects(objectNames);
-    console.log('Deleted objects: ', respDelAll);
-  }
-
-  const getAll = await s3client.listObjects();
-  console.log('Remaining objects after deletion: ', getAll);
-
-  return c.json({ ok: true, message: 'All keys cleared successfully', s3objects: getAll });
+  const listAll = await ls.deleteAll();
+  return c.json(listAll);
 });
 
 // TBD rework
 api.post('login', async c => {
   const body = await c.req.json();
   const headers = c.req.raw.headers;
-  console.log('Register headers: ', headers);
   const ls = c.get('lattice');
   if (!ls) {
     return c.json({ ok: false, message: 'Service not initialized' }, 500);
   }
   const loginResponse = await ls.login(headers, body);
-  console.log('Login response: ', loginResponse);
   c.header('x-request-id', headers.get('x-request-id'));
   return c.json(loginResponse);
 });

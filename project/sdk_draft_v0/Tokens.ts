@@ -37,4 +37,8 @@ export class Tokens {
   public async revokeToken(deviceId: string): Promise<boolean> {
     return await this._tokenKeyv.delete(deviceId);
   }
+
+  public async revokeAllTokens(): Promise<void> {
+    await this._tokenKeyv.clear();
+  }
 }

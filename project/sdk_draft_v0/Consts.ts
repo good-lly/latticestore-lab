@@ -133,7 +133,7 @@ export const VALIDATION_RULES = {
     requiredFields: ['Content-SHA256', 'X-Timestamp', 'X-Request-ID', 'X-Signature'],
   },
   deviceRegistrationPayload: {
-    requiredFields: ['username', 'devicePublicKey', 'deviceEnvelopes', 'deviceListFile', 'devices'],
+    requiredFields: ['devicePublicKey', 'deviceEnvelopes', 'deviceListFile', 'devices', 'username'],
   },
   deviceLoginPayload: {
     requiredFields: ['username', 'deviceId'],

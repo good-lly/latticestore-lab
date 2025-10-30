@@ -1,18 +1,16 @@
 'use strict';
 
-import { signedRequest, RegisterRequest, LoginRequest, LoginResponse } from './ApiClient';
+import { signedRequest } from './ApiClient';
+import type { LoginResponse, LoginRequest, RegisterRequest } from './ApiClient';
+
 import { CryptoUtils } from './CryptoUtils';
 import { AEAD } from './CryptoAEAD';
-import {
-  DeviceEnvelope,
-  ExtendedDeviceEnvelope,
-  DeviceUtils,
-  RECOVERY_DEVICE_NAME,
-  DeviceCredentials,
-} from './DeviceUtils';
+
+import { DeviceUtils, RECOVERY_DEVICE_NAME } from './DeviceUtils';
+import type { DeviceEnvelope, ExtendedDeviceEnvelope } from './DeviceUtils';
+
 import { Account } from './Account';
 import { base64ToUint8Array, fromUint8Array } from './Helpers';
-import { FeatureType } from './features/Features';
 
 export class LatticeStoreClient {
   public async registerNewAccount(
@@ -25,9 +23,9 @@ export class LatticeStoreClient {
     try {
       const thisFinalMasterSeed =
         thisDeviceMasterSeed.length > 0 ? thisDeviceMasterSeed : CryptoUtils.generateRandomBytes(128);
+      thisDeviceMasterSeed.fill(0); // Clear initial seed from memory, just in case
       const { kemSeed, dsaSeed } = CryptoUtils.deriveSeeds(thisFinalMasterSeed);
       const masterKey = AEAD.generateRawAEADKeyData();
-
       const [thisDeviceCredentials, recoveryDevice] = await Promise.all([
         DeviceUtils.generateNewDeviceCredential(masterKey, kemSeed, dsaSeed), // local device is generated from user-provided seed
         DeviceUtils.generateNewDeviceCredential(masterKey), // recovery device is always random!
@@ -39,7 +37,7 @@ export class LatticeStoreClient {
         username: username.trim(),
         devicePublicKey: thisDeviceCredentials.dsaPublicKeyBase64,
         deviceEnvelopes: [thisDeviceCredentials.envelope as DeviceEnvelope, recoveryDevice.envelope as DeviceEnvelope], // include device envelopes
-        deviceListFile: await DeviceUtils.buildDeviceList(new Set([thisDeviceCredentials, recoveryDevice]), masterKey),
+        deviceListFile: await DeviceUtils.buildDeviceList([thisDeviceCredentials, recoveryDevice], masterKey),
         devices: [thisDeviceCredentials.deviceId, recoveryDevice.deviceId],
         email: email?.trim(),
       };
@@ -87,16 +85,12 @@ export class LatticeStoreClient {
       const masterKey = await DeviceUtils.recoverMasterKey(response.deviceEnvelope as ExtendedDeviceEnvelope, kemSeed);
       const aeadKey = await AEAD.importAEADKey(masterKey);
       masterKey.fill(0);
-      const deviceList = new Set(
-        JSON.parse(
-          fromUint8Array(await AEAD.decrypt(aeadKey, base64ToUint8Array(response.deviceEnvelope.deviceListBase64))),
-        ),
-      ) as Set<DeviceCredentials>;
+      const deviceList = JSON.parse(
+        fromUint8Array(await AEAD.decrypt(aeadKey, base64ToUint8Array(response.deviceEnvelope.deviceListBase64))),
+      );
       const featuresList = response.featuresList
-        ? (new Set<FeatureType>(
-            JSON.parse(fromUint8Array(await AEAD.decrypt(aeadKey, base64ToUint8Array(response.featuresList)))),
-          ) as Set<FeatureType>)
-        : new Set<FeatureType>();
+        ? JSON.parse(fromUint8Array(await AEAD.decrypt(aeadKey, base64ToUint8Array(response.featuresList))))
+        : [];
       if (!response.accountInfo.username || response.accountInfo.username !== username.trim()) {
         throw new Error('Username mismatch during login');
       }

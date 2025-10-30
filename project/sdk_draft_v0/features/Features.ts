@@ -1,6 +1,9 @@
 export type FeatureType = {
-  featureId: string;
   featureName: string;
-  featureType: string;
+  featureClass: FeatureClass;
+  featureKey: string;
+  featureEtag: string;
   enabled: boolean;
 };
+
+type FeatureClass = 'VFS' | 'KEYVALUE' | 'LIST' | 'CRDTLIST';

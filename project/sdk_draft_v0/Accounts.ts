@@ -12,11 +12,12 @@ export type AccountData = {
   updatedAt: string;
   deviceCount: number;
   devices: string[];
+  otherPublicUserData?: Record<string, string>[];
 };
 
-const ACCOUNT_NAMESPACE = 'ACCOUNT';
-const DEVICE_NAMESPACE = 'DEVICE';
-const USERNAME_ID = 'USER';
+export const ACCOUNT_NAMESPACE = 'ACCOUNT';
+export const DEVICE_NAMESPACE = 'DEVICE';
+export const USERNAME_ID = 'USER';
 
 const _getAccountInfoS3Key = (accountId: string) => `${ACCOUNT_NAMESPACE}/${accountId}.json`;
 const _usernameToAccountId = (username: string) => `${USERNAME_ID}::${username}`;

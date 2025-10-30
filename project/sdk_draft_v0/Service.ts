@@ -5,6 +5,7 @@ import { AccountData, Accounts } from './Accounts';
 import { Tokens } from './Tokens';
 import { CryptoUtils } from './CryptoUtils';
 import { uint8ArrayToHex } from './Helpers';
+import { Admin } from './admin/Admin';
 
 export type RedisConfig = {
   REDIS_URL: string;
@@ -43,6 +44,7 @@ export class LatticeStoreService {
         updatedAt: new Date().toISOString(),
         deviceCount: body.deviceEnvelopes.length || 0,
         devices: body.devices || [],
+        otherPublicUserData: body.otherPublicUserData || [],
       };
       const account = await this._accounts.create(accountData, body.deviceEnvelopes, body.deviceListFile);
 
@@ -99,5 +101,23 @@ export class LatticeStoreService {
     } catch (error) {
       throw new Error(`Login request validation failed: ${(error as Error).message}`);
     }
+  }
+
+  // ONLY FOR DEVELOPMENT AND TESTING PURPOSES
+  public async listAll(): Promise<{ accounts: AccountData[]; allS3File: string[] | null }> {
+    const data = (await Admin.listAccounts(this._s3, this._redisConfig)) as {
+      accounts: AccountData[];
+      allS3File: string[] | null;
+    };
+    return data;
+  }
+
+  public async deleteAll(): Promise<{ accounts: AccountData[]; allS3File: string[] | null }> {
+    await Admin.deleteAll(this._s3, this._redisConfig);
+    const data = (await Admin.listAccounts(this._s3, this._redisConfig)) as {
+      accounts: AccountData[];
+      allS3File: string[] | null;
+    };
+    return data;
   }
 }
