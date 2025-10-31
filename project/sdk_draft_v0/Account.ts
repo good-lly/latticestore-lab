@@ -26,7 +26,7 @@ export class Account {
     this._accountId = accountInfo.accountId;
     this._username = accountInfo.username;
     this._deviceId = deviceCredentials.deviceId;
-    this._deviceName = deviceCredentials.deviceName || '';
+    this._deviceName = deviceList.find(d => d.deviceId === deviceCredentials.deviceId)?.deviceName || 'Unknown Device';
     this._deviceList = deviceList;
     this._featuresList = featuresList;
     this._createdAt = new Date(accountInfo.createdAt);

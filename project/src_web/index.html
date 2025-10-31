@@ -34,7 +34,6 @@
         // draggingListener: false,
         // dragActive: false,
         emailNotifications: true,
-        store: new Store(),
         cwd: '/',
         cwdFullPathArray: [{ name: '/', id: null }],
         cwdId: null,
@@ -45,35 +44,36 @@
         uploadValue: 0,
         fileProgressMap: new Map(),
         async init() {
-          if (this.isLoggedIn && this.username && this.devicename) {
-            console.log('User is logged in as', this.username, 'on device:', this.devicename);
-            const loggedIn = await this.store.login(this.username, this.devicename, 'password', API_ENDPOINT);
-            if (loggedIn) {
-              this.isLoggedIn = true;
-              this.authToken = this.store.authToken;
-              const hashId = window.location.hash.slice(1);
-              if (hashId) {
-                this.cwdId = hashId;
-                await this.changeCWD(hashId);
-              } else {
-                this.cwdId = null;
-                this.cwd = '/';
-                this.cwdFullPathArray = [{ name: '/', id: null }];
-                // window.location.hash = this.cwdId || '';
-                this.cwdFiles = this.store.getFilesInDir(this.cwdId);
-              }
-            } else {
-              await this.store.logout();
-              this.isLoggedIn = false;
-              this.username = '';
-              this.authToken = '';
-              this.userId = '';
-            }
-            window.addEventListener('hashchange', () => {
-              const hashId = window.location.hash.slice(1);
-              if (hashId) this.changeCWD(hashId);
-            });
-          }
+          // TODO
+          // if (this.isLoggedIn && this.username && this.devicename) {
+          //   console.log('User is logged in as', this.username, 'on device:', this.devicename);
+          //   const loggedIn = await this.store.login(this.username, this.devicename, 'password', API_ENDPOINT);
+          //   if (loggedIn) {
+          //     this.isLoggedIn = true;
+          //     this.authToken = this.store.authToken;
+          //     const hashId = window.location.hash.slice(1);
+          //     if (hashId) {
+          //       this.cwdId = hashId;
+          //       await this.changeCWD(hashId);
+          //     } else {
+          //       this.cwdId = null;
+          //       this.cwd = '/';
+          //       this.cwdFullPathArray = [{ name: '/', id: null }];
+          //       // window.location.hash = this.cwdId || '';
+          //       this.cwdFiles = this.store.getFilesInDir(this.cwdId);
+          //     }
+          //   } else {
+          //     await this.store.logout();
+          //     this.isLoggedIn = false;
+          //     this.username = '';
+          //     this.authToken = '';
+          //     this.userId = '';
+          //   }
+          //   window.addEventListener('hashchange', () => {
+          //     const hashId = window.location.hash.slice(1);
+          //     if (hashId) this.changeCWD(hashId);
+          //   });
+          // }
         },
         async register(newUsername, password) {
           // console.log('Creating new user:', newUsername, lattice.registerNewAccount);
@@ -83,13 +83,14 @@
             this.devicename,
             new Uint8Array([1, 2, 3, 4, 5, 6, 7, 8, 9, 0]),
           );
-          console.log('Registration response:', registerResp);
-          if (registerResp.ok) {
-            alert('Registration successful! You can now log in.');
-            // await this.login(newUsername, password);
-          } else {
-            alert(registerResp.message);
-          }
+          // TODO
+          // console.log('Registration response:', registerResp);
+          // if (registerResp.ok) {
+          //   alert('Registration successful! You can now log in.');
+          //   // await this.login(newUsername, password);
+          // } else {
+          //   alert(registerResp.message);
+          // }
         },
         async login(username, password) {
           console.log('Logging in user:', username);
@@ -97,61 +98,62 @@
           console.log('Login response:', loggedIn);
         },
         async logout() {
-          this.username = '';
-          await this.store.logout();
-          this.authToken = '';
-          this.isLoggedIn = false;
+          // TODO: Add confirmation dialog
         },
         async addNewDir() {
-          const dirName = prompt('Enter new directory name:');
-          if (!dirName || dirName.trim() === '') {
-            return;
-          }
-          if (isValidDirName(dirName.trim())) {
-            const res = await this.store.addNewDir(this.cwdId, dirName.trim());
-            if (res) {
-              this.cwdFiles = this.store.getFilesInDir(this.cwdId);
-            } else {
-              alert('Failed to create directory. It might already exist.');
-            }
-          } else {
-            alert('Invalid directory name. Please avoid special characters like / \\ ? % * : | " < > .');
-          }
+          // TODO
+          // const dirName = prompt('Enter new directory name:');
+          // if (!dirName || dirName.trim() === '') {
+          //   return;
+          // }
+          // if (isValidDirName(dirName.trim())) {
+          //   const res = await this.store.addNewDir(this.cwdId, dirName.trim());
+          //   if (res) {
+          //     this.cwdFiles = this.store.getFilesInDir(this.cwdId);
+          //   } else {
+          //     alert('Failed to create directory. It might already exist.');
+          //   }
+          // } else {
+          //   alert('Invalid directory name. Please avoid special characters like / \\ ? % * : | " < > .');
+          // }
         },
 
         async removeEntry(fileId) {
           if (confirm('Are you sure? This action cannot be undone.')) {
-            const res = await this.store.deleteFile(fileId);
-            if (res) {
-              console.log('Entry deleted successfully.');
-              this.cwdFiles = this.store.getFilesInDir(this.cwdId);
-            } else {
-              alert('Failed to delete the entry.');
-            }
+            // TODO
+            // const res = await this.store.deleteFile(fileId);
+            // if (res) {
+            //   console.log('Entry deleted successfully.');
+            //   this.cwdFiles = this.store.getFilesInDir(this.cwdId);
+            // } else {
+            //   alert('Failed to delete the entry.');
+            // }
           }
         },
 
         async changeCWD(newCwdId) {
-          window.location.hash = newCwdId || '';
-
-          this.cwdId = newCwdId;
-          this.cwdFullPathArray = this.store.getFullPathByIdArray(newCwdId);
-          this.cwd = this.cwdFullPathArray[this.cwdFullPathArray.length - 1]?.name || '/';
-          this.cwdFiles = this.store.getFilesInDir(newCwdId);
+          // TODO
+          // window.location.hash = newCwdId || '';
+          // this.cwdId = newCwdId;
+          // this.cwdFullPathArray = this.store.getFullPathByIdArray(newCwdId);
+          // this.cwd = this.cwdFullPathArray[this.cwdFullPathArray.length - 1]?.name || '/';
+          // this.cwdFiles = this.store.getFilesInDir(newCwdId);
         },
 
         async downloadFile(fileId) {
-          console.log('Downloading file with ID:', fileId);
-          const result = await this.store.downloadFile(fileId);
-          if (!result.ok) {
-            alert('Failed to download file: ' + result.message);
-          }
+          // TODO
+          // console.log('Downloading file with ID:', fileId);
+          // const result = await this.store.downloadFile(fileId);
+          // if (!result.ok) {
+          //   alert('Failed to download file: ' + result.message);
+          // }
         },
 
         async startStream(fileId) {
-          console.log('Starting stream for file ID:', fileId);
-          my_modal_2.showModal();
-          await this.store.startStream(fileId, document.getElementById('video-box'));
+          // TODO
+          // console.log('Starting stream for file ID:', fileId);
+          // my_modal_2.showModal();
+          // await this.store.startStream(fileId, document.getElementById('video-box'));
         },
 
         async openPicker() {
@@ -173,61 +175,56 @@
           // --- Fallback: Multi-file picker ---
           openMultiFilePicker(async filesList => {
             try {
-              // Initialize progress tracking
-              this.uploadingFiles = Array.from(filesList).map(f => ({
-                name: f.name,
-                completed: 0,
-                total: 0,
-                status: 'pending',
-              }));
-              this.fileProgressMap.clear();
-              // Upload each file
-              const { successful, failed } = await this.store.uploadFilelist(filesList, this.cwdId, progress => {
-                const key = progress.fileName;
-
-                if (!this.fileProgressMap.has(key)) {
-                  this.fileProgressMap.set(key, {
-                    completed: 0,
-                    total: progress.totalChunks,
-                    status: 'uploading',
-                  });
-                }
-
-                const file = this.fileProgressMap.get(key);
-
-                if (progress.status === 'completed') {
-                  file.completed++;
-                } else if (progress.status === 'failed') {
-                  file.status = 'error';
-                  file.error = progress.error;
-                }
-
-                // Update UI
-                const fileIndex = this.uploadingFiles.findIndex(f => f.name === key);
-                if (fileIndex !== -1) {
-                  this.uploadingFiles[fileIndex].completed = file.completed;
-                  this.uploadingFiles[fileIndex].total = file.total;
-                  this.uploadingFiles[fileIndex].status = file.status;
-                  this.uploadingFiles[fileIndex].error = file.error;
-                }
-
-                // Update overall progress (first file)
-                if (fileIndex === 0) {
-                  this.uploadValue = Math.round((file.completed / file.total) * 100);
-                }
-              });
-              // Wait for all uploads
-              console.log(`Upload complete. Successful: ${successful.length}, Failed: ${failed.length}`);
+              // TODO
+              // this.uploadingFiles = Array.from(filesList).map(f => ({
+              //   name: f.name,
+              //   completed: 0,
+              //   total: 0,
+              //   status: 'pending',
+              // }));
+              // this.fileProgressMap.clear();
+              // // Upload each file
+              // const { successful, failed } = await this.store.uploadFilelist(filesList, this.cwdId, progress => {
+              //   const key = progress.fileName;
+              //   if (!this.fileProgressMap.has(key)) {
+              //     this.fileProgressMap.set(key, {
+              //       completed: 0,
+              //       total: progress.totalChunks,
+              //       status: 'uploading',
+              //     });
+              //   }
+              //   const file = this.fileProgressMap.get(key);
+              //   if (progress.status === 'completed') {
+              //     file.completed++;
+              //   } else if (progress.status === 'failed') {
+              //     file.status = 'error';
+              //     file.error = progress.error;
+              //   }
+              //   // Update UI
+              //   const fileIndex = this.uploadingFiles.findIndex(f => f.name === key);
+              //   if (fileIndex !== -1) {
+              //     this.uploadingFiles[fileIndex].completed = file.completed;
+              //     this.uploadingFiles[fileIndex].total = file.total;
+              //     this.uploadingFiles[fileIndex].status = file.status;
+              //     this.uploadingFiles[fileIndex].error = file.error;
+              //   }
+              //   // Update overall progress (first file)
+              //   if (fileIndex === 0) {
+              //     this.uploadValue = Math.round((file.completed / file.total) * 100);
+              //   }
+              // });
+              // // Wait for all uploads
+              // console.log(`Upload complete. Successful: ${successful.length}, Failed: ${failed.length}`);
             } catch (err) {
               console.error('Multi-file selection error:', err.message);
             } finally {
-              console.log('Upload process completed.');
-              this.cwdFiles = this.store.getFilesInDir(this.cwdId);
-              setTimeout(() => {
-                this.uploadingFiles = [];
-                this.uploadValue = 0;
-                this.fileProgressMap.clear();
-              }, 1200);
+              // console.log('Upload process completed.');
+              // this.cwdFiles = this.store.getFilesInDir(this.cwdId);
+              // setTimeout(() => {
+              //   this.uploadingFiles = [];
+              //   this.uploadValue = 0;
+              //   this.fileProgressMap.clear();
+              // }, 1200);
             }
           });
           //}

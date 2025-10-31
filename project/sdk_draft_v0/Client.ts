@@ -23,8 +23,9 @@ export class LatticeStoreClient {
     try {
       const thisFinalMasterSeed =
         thisDeviceMasterSeed.length > 0 ? thisDeviceMasterSeed : CryptoUtils.generateRandomBytes(128);
-      thisDeviceMasterSeed.fill(0); // Clear initial seed from memory, just in case
       const { kemSeed, dsaSeed } = CryptoUtils.deriveSeeds(thisFinalMasterSeed);
+      thisFinalMasterSeed.fill(0); // Clear initial seed from memory, just in case
+      thisDeviceMasterSeed.fill(0); // Clear user-provided seed from memory, just in case
       const masterKey = AEAD.generateRawAEADKeyData();
       const [thisDeviceCredentials, recoveryDevice] = await Promise.all([
         DeviceUtils.generateNewDeviceCredential(masterKey, kemSeed, dsaSeed), // local device is generated from user-provided seed
@@ -68,7 +69,7 @@ export class LatticeStoreClient {
   ): Promise<Account> {
     try {
       const { kemSeed, dsaSeed } = CryptoUtils.deriveSeeds(thisDeviceMasterSeed);
-      thisDeviceMasterSeed.fill(0);
+      // thisDeviceMasterSeed.fill(0);
       const thisDeviceCredentials = await DeviceUtils.getDeviceCredentialsFromSeeds(kemSeed, dsaSeed);
       const loginPayload: LoginRequest = {
         username: username.trim(),

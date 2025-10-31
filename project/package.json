@@ -1,6 +1,6 @@
 {
   "name": "lattice-sdk",
-  "version": "1.0.0",
+  "version": "0.0.2",
   "type": "module",
   "files": [
     "dist/sdk",
@@ -38,13 +38,13 @@
     "alpinejs": "3.15.1",
     "concurrently": "^9.2.1",
     "daisyui": "5.3.10",
-    "hono": "4.10.3",
-    "rimraf": "^6.0.1",
+    "hono": "4.10.4",
+    "rimraf": "6.1.0",
     "tailwindcss": "4.1.16",
-    "typescript": "^5.9.3",
+    "typescript": "5.9.3",
     "vite": "7.1.12",
-    "wrangler": "4.45.1",
-    "vitest": "4.0.4"
+    "wrangler": "4.45.3",
+    "vitest": "4.0.5"
   },
   "prettier": {
     "bracketSpacing": true,
