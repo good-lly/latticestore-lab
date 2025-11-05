@@ -98,8 +98,12 @@ export const KEM_KEY_LENGTH_BYTES = 64;
 export const DSA_KEY_LENGTH_BYTES = 32;
 export const TOKEN_LENGTH_BYTES = 64;
 
+export const DEFAULT_AEAD_KEY_LENGTH_BYTES = 32;
+
 export const CUSTOM_KEM_STRING = '*incredibly_unique-custom_string_for_KEM&LatticeStore*';
 export const CUSTOM_DSA_STRING = '*incredibly_unique-custom_string_for_ML-DSA&LatticeStore*';
+
+export const CUSTOM_DEVICE_LIST_STRING = '*incredibly_unique-custom_string_for_DEVICE_LISTcrypt0&LatticeStore*';
 
 export const VALIDATION_RULES = {
   username: {

@@ -10,7 +10,9 @@ import { DeviceUtils, RECOVERY_DEVICE_NAME } from './DeviceUtils';
 import type { DeviceEnvelope, ExtendedDeviceEnvelope } from './DeviceUtils';
 
 import { Account } from './Account';
-import { base64ToUint8Array, fromUint8Array } from './Helpers';
+import { base64ToUint8Array, fromUint8Array, toUint8Array } from './Helpers';
+
+import { CUSTOM_DEVICE_LIST_STRING, DEFAULT_AEAD_KEY_LENGTH_BYTES } from './Consts';
 
 export class LatticeStoreClient {
   public async registerNewAccount(
@@ -22,9 +24,11 @@ export class LatticeStoreClient {
   ) {
     try {
       const thisFinalMasterSeed =
-        thisDeviceMasterSeed.length > 0 ? thisDeviceMasterSeed : CryptoUtils.generateRandomBytes(32);
+        thisDeviceMasterSeed.length > 0
+          ? thisDeviceMasterSeed
+          : CryptoUtils.generateRandomBytes(DEFAULT_AEAD_KEY_LENGTH_BYTES);
       const { kemSeed, dsaSeed } = CryptoUtils.deriveSeeds(thisFinalMasterSeed);
-      const recoverySeed = CryptoUtils.generateRandomBytes(32);
+      const recoverySeed = CryptoUtils.generateRandomBytes(DEFAULT_AEAD_KEY_LENGTH_BYTES);
       const recoverySeedsPair = CryptoUtils.deriveSeeds(recoverySeed);
       const masterKey = AEAD.generateRawAEADKeyData();
       const [thisDeviceCredentials, recoveryDevice] = await Promise.all([
@@ -33,12 +37,16 @@ export class LatticeStoreClient {
       ]);
       thisDeviceCredentials.deviceName = deviceName.trim();
       recoveryDevice.deviceName = RECOVERY_DEVICE_NAME;
-
+      const deviceListKey = CryptoUtils.letscShake256(
+        masterKey,
+        toUint8Array(CUSTOM_DEVICE_LIST_STRING),
+        DEFAULT_AEAD_KEY_LENGTH_BYTES,
+      );
       const registerPayload: RegisterRequest = {
         username: username.trim(),
         devicePublicKey: thisDeviceCredentials.dsaPublicKeyBase64,
         deviceEnvelopes: [thisDeviceCredentials.envelope as DeviceEnvelope, recoveryDevice.envelope as DeviceEnvelope], // include device envelopes
-        deviceListFile: await DeviceUtils.buildDeviceList([thisDeviceCredentials, recoveryDevice], masterKey),
+        deviceListFile: await DeviceUtils.buildDeviceList([thisDeviceCredentials, recoveryDevice], deviceListKey),
         devices: [thisDeviceCredentials.deviceId, recoveryDevice.deviceId],
         email: email?.trim(),
       };
