@@ -12,30 +12,34 @@ export class Account {
   private _username: string;
   readonly _deviceId: string;
   private _deviceName: string;
+  readonly _deviceListKey: AEADCryptoKey;
   private _deviceList: DeviceCredentials[];
+  readonly _featureListKey: AEADCryptoKey;
   private _featuresList: FeatureType[];
   readonly _createdAt: Date;
   private _updatedAt: Date;
-  readonly _aeadKey: AEADCryptoKey;
   private _authToken: string;
 
   constructor(
     deviceCredentials: DeviceCredentials,
     accountInfo: AccountData,
+    deviceListKey: AEADCryptoKey,
     deviceList: DeviceCredentials[],
+    featureListKey: AEADCryptoKey,
     featuresList: FeatureType[],
-    key: AEADCryptoKey,
     authToken: string,
   ) {
     this._accountId = accountInfo.accountId;
     this._username = accountInfo.username;
     this._deviceId = deviceCredentials.deviceId;
     this._deviceName = deviceList.find(d => d.deviceId === deviceCredentials.deviceId)?.deviceName || 'Unknown Device';
+    this._deviceListKey = deviceListKey;
     this._deviceList = deviceList;
+    this._featureListKey = featureListKey;
     this._featuresList = featuresList;
     this._createdAt = new Date(accountInfo.createdAt);
     this._updatedAt = new Date(accountInfo.updatedAt);
-    this._aeadKey = key;
+
     this._authToken = authToken;
   }
 

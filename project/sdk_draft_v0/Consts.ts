@@ -104,6 +104,7 @@ export const CUSTOM_KEM_STRING = '*incredibly_unique-custom_string_for_KEM&Latti
 export const CUSTOM_DSA_STRING = '*incredibly_unique-custom_string_for_ML-DSA&LatticeStore*';
 
 export const CUSTOM_DEVICE_LIST_STRING = '*incredibly_unique-custom_string_for_DEVICE_LISTcrypt0&LatticeStore*';
+export const CUSTOM_FEATURES_LIST_STRING = '*incredibly_unique-custom_string_for_FEATURES_LISTcrypt0&LatticeStore*';
 
 export const VALIDATION_RULES = {
   username: {
