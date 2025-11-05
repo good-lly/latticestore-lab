@@ -93,7 +93,13 @@ export const RESERVED_USERNAMES = [
 ];
 export const TIMESTAMP_TOLERANCE_MS = 5 * 60 * 1000; // 5 minutes
 export const TOKEN_EXPIRATION_SECONDS = 1000 * 60 * 30; // 30 minutes
+
+export const KEM_KEY_LENGTH_BYTES = 64;
+export const DSA_KEY_LENGTH_BYTES = 32;
 export const TOKEN_LENGTH_BYTES = 64;
+
+export const CUSTOM_KEM_STRING = '*incredibly_unique-custom_string_for_KEM&LatticeStore*';
+export const CUSTOM_DSA_STRING = '*incredibly_unique-custom_string_for_ML-DSA&LatticeStore*';
 
 export const VALIDATION_RULES = {
   username: {
