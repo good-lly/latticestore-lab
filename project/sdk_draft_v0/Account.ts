@@ -1,7 +1,11 @@
-import { AccountData } from './Accounts';
+import type { AccountData } from './Accounts';
+
 import { AEADCryptoKey } from './CryptoAEAD';
-import { DeviceCredentials } from './DeviceUtils';
-import { FeatureType } from './features/Features';
+
+import type { DeviceCredentials } from './DeviceUtils';
+
+import { Feature } from './features/Features';
+import type { FeatureClass, FeatureType } from './features/Features';
 
 export class Account {
   readonly _accountId: string;
@@ -61,5 +65,40 @@ export class Account {
       devices: this._deviceList.map(device => device.deviceId),
       features: this._featuresList,
     };
+  }
+
+  getFeaturesList(): FeatureType[] {
+    return this._featuresList;
+  }
+
+  async createNewFeature(featureName: string, featureClass: FeatureClass): Promise<FeatureType> {
+    const feature = new Feature(featureName, featureClass);
+    // TODO: implement feature initialization logic
+    // const isInit = await feature.init();
+    // if (!isInit) {
+    //   throw new Error(`Failed to create feature ${featureName} of class ${featureClass}`);
+    // }
+    this._featuresList.push(feature);
+    return feature;
+  }
+
+  async getFeature(featureName: string, featureClass: FeatureClass, autocreate: boolean): Promise<FeatureType | null> {
+    const feature = this._featuresList.find(f => f.featureName === featureName && f.featureClass === featureClass);
+    if (feature) {
+      return feature;
+    }
+
+    if (autocreate) {
+      const newFeature: FeatureType = {
+        featureName,
+        featureClass: featureClass,
+        featureKey: `user:${this._accountId}:${featureName}`,
+        featureEtag: '',
+      };
+      this._featuresList.push(newFeature);
+      return newFeature;
+    }
+
+    return null;
   }
 }

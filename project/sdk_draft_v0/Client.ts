@@ -22,14 +22,14 @@ export class LatticeStoreClient {
   ) {
     try {
       const thisFinalMasterSeed =
-        thisDeviceMasterSeed.length > 0 ? thisDeviceMasterSeed : CryptoUtils.generateRandomBytes(128);
+        thisDeviceMasterSeed.length > 0 ? thisDeviceMasterSeed : CryptoUtils.generateRandomBytes(32);
       const { kemSeed, dsaSeed } = CryptoUtils.deriveSeeds(thisFinalMasterSeed);
-      thisFinalMasterSeed.fill(0); // Clear initial seed from memory, just in case
-      thisDeviceMasterSeed.fill(0); // Clear user-provided seed from memory, just in case
+      const recoverySeed = CryptoUtils.generateRandomBytes(32);
+      const recoverySeedsPair = CryptoUtils.deriveSeeds(recoverySeed);
       const masterKey = AEAD.generateRawAEADKeyData();
       const [thisDeviceCredentials, recoveryDevice] = await Promise.all([
         DeviceUtils.generateNewDeviceCredential(masterKey, kemSeed, dsaSeed), // local device is generated from user-provided seed
-        DeviceUtils.generateNewDeviceCredential(masterKey), // recovery device is always random!
+        DeviceUtils.generateNewDeviceCredential(masterKey, recoverySeedsPair.kemSeed, recoverySeedsPair.dsaSeed), // recovery device is always random!
       ]);
       thisDeviceCredentials.deviceName = deviceName.trim();
       recoveryDevice.deviceName = RECOVERY_DEVICE_NAME;
@@ -44,6 +44,11 @@ export class LatticeStoreClient {
       };
       masterKey.fill(0); // Clear master key from memory
       thisFinalMasterSeed.fill(0); // Clear master seed from memory
+      thisDeviceMasterSeed.fill(0); // Clear user-provided seed from memory, just in case
+      recoverySeedsPair.kemSeed.fill(0);
+      recoverySeedsPair.dsaSeed.fill(0);
+      kemSeed.fill(0);
+      dsaSeed.fill(0);
       const response = await signedRequest(
         `${serviceUrl}/register`,
         registerPayload,
@@ -56,6 +61,7 @@ export class LatticeStoreClient {
         ok: response.ok,
         deviceCredentials: thisDeviceCredentials,
         recoveryDeviceCredentials: recoveryDevice,
+        recoverySeed: recoverySeed,
       };
     } catch (error) {
       throw error;
