@@ -120,8 +120,8 @@ export const VALIDATION_RULES = {
     description: 'Standard email format',
   },
   displayName: {
-    minLength: 3,
-    maxLength: 64,
+    minLength: 5,
+    maxLength: 256,
     pattern: /^[\p{L}\p{N}\p{P}\p{Z}]+$/u,
     description: 'Display name in any language',
   },

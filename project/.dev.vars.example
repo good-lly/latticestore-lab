@@ -11,5 +11,7 @@ REDIS_TOKEN="randomlygeneratedaccesstoken"
 WRANGLER_SEND_METRICS=false
 UPSTASH_DISABLE_TELEMETRY=true
 
-DEMO_MODE=true
-USER_STORAGE_QUOTA=10737418240  # 10GB
+SERVICE_NAME=LatticeStoreLabDev
+SERVICE_ENDPOINT=http://localhost:8787
+
+NODE_ENV=development

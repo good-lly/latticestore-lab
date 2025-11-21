@@ -7,6 +7,7 @@ import { uint8ArrayToBase64, generateCanonicalJSON, fromUint8Array } from './Hel
 // ===== TYPES =====
 
 export type LoginRequest = {
+  username: string;
   deviceId: string;
 };
 

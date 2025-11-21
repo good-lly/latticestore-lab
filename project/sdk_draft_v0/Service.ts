@@ -73,12 +73,14 @@ export class LatticeStoreService {
       if (!isValid) {
         throw new Error('Invalid login request format');
       }
-      const accountId = await this._accounts.getAccountIdByUsername(body.username);
+      const { accountId, deviceEnvelope } = await this._accounts.getAccountByUsernamePlusDeviceId(
+        body.username,
+        body.deviceId,
+      );
       if (!accountId || accountId.length === 0 || accountId === null) {
         throw new Error('Username does not exist');
       }
-      const [deviceEnvelope, accountInfo, featuresList] = await Promise.all([
-        this._accounts.getDeviceEnvelope(accountId, body.deviceId),
+      const [accountInfo, featuresList] = await Promise.all([
         this._accounts.getAccountData(accountId),
         this._accounts.getFeaturesList(accountId),
       ]);

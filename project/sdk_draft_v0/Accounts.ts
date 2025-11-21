@@ -23,6 +23,9 @@ const _getAccountInfoS3Key = (accountId: string) => `${ACCOUNT_NAMESPACE}/${acco
 const _usernameToAccountId = (username: string) => `${USERNAME_ID}::${username}`;
 const _usernameToAccountIdS3Key = (username: string) => `${USERNAME_ID}/${username}.txt`;
 
+const _deviceIdToAccountId = (deviceId: string) => `${DEVICE_NAMESPACE}::${deviceId}`;
+const _deviceIdToAccountIdS3Key = (deviceId: string) => `${DEVICE_NAMESPACE}/${deviceId}.txt`;
+
 const _accountFeaturesListS3Key = (accountId: string) => `${accountId}/.system/features`;
 const _accountFeaturesListRedisKey = (accountId: string) => `${accountId}::features`;
 
@@ -86,7 +89,8 @@ export class Accounts {
       // on account create, we need to store:
       // 1. account data (account informations) in redis and s3
       // 2. username to accountId mapping in redis and s3
-      // 3. each device envelope in redis and s3, with deviceListBase64 included
+      // 3. deviceId to accountId mapping in redis and s3
+      // 4. each device envelope in redis and s3, with deviceListBase64 included
       const ops = [
         this._accountsRedis.set(accountData.accountId, accountData),
         this._s3.putObject(_getAccountInfoS3Key(accountData.accountId), JSON.stringify(accountData)),
@@ -110,6 +114,8 @@ export class Accounts {
             extendedEnvelope,
           ),
         );
+        ops.push(this._devicesRedis.set(_deviceIdToAccountId(envelope.deviceId), accountData.accountId));
+        ops.push(this._s3.putObject(_deviceIdToAccountIdS3Key(envelope.deviceId), accountData.accountId));
       }
       await Promise.all(ops);
       console.log(`Account ${accountData.accountId} created successfully`, ops.length);
@@ -119,21 +125,60 @@ export class Accounts {
     }
   }
 
-  public async getAccountIdByUsername(username: string): Promise<string | null> {
-    const accountId = await this._accountsRedis.get(_usernameToAccountId(username));
-    if (accountId !== undefined) {
-      return accountId;
-    }
-    // Fallback to S3 check
-    try {
-      const accountId = _usernameToAccountIdS3Key(username);
+  // public async getAccountIdByUsername(username: string): Promise<string | null> {
+  //   const accountId = await this._accountsRedis.get(_usernameToAccountId(username));
+  //   if (accountId !== undefined) {
+  //     return accountId;
+  //   }
+  //   // Fallback to S3 check
+  //   try {
+  //     const accountId = _usernameToAccountIdS3Key(username);
+  //     if (accountId !== undefined || accountId !== null) {
+  //       return accountId;
+  //     }
+  //   } catch (error) {
+  //     return null;
+  //   }
+  //   return null;
+  // }
+
+  // public async getAccountIdByDeviceId(deviceId: string): Promise<string | null> {
+  //   const accountId = await this._devicesRedis.get(_deviceIdToAccountId(deviceId));
+  //   if (accountId !== undefined) {
+  //     return accountId;
+  //   }
+  //   // Fallback to S3 check
+  //   try {
+  //     const accountId = _deviceIdToAccountIdS3Key(deviceId);
+  //     if (accountId !== undefined || accountId !== null) {
+  //       this._devicesRedis.set(_deviceIdToAccountId(deviceId), accountId);
+  //       return accountId;
+  //     }
+  //   } catch (error) {
+  //     return null;
+  //   }
+  //   return null;
+  // }
+
+  public async getAccountByUsernamePlusDeviceId(
+    username: string,
+    deviceId: string,
+  ): Promise<{ accountId: string | null; deviceEnvelope: ExtendedDeviceEnvelope | null }> {
+    let accountId = await this._accountsRedis.get(_usernameToAccountId(username));
+    if (!accountId) {
+      accountId = _usernameToAccountIdS3Key(username);
       if (accountId !== undefined || accountId !== null) {
+        this._devicesRedis.set(_deviceIdToAccountId(deviceId), accountId);
         return accountId;
+      } else {
+        return { accountId: null, deviceEnvelope: null };
       }
-    } catch (error) {
-      return null;
     }
-    return null;
+    const deviceEnvelope = await this.getDeviceEnvelope(accountId, deviceId);
+    if (!deviceEnvelope) {
+      return { accountId: null, deviceEnvelope: null };
+    }
+    return { accountId, deviceEnvelope };
   }
 
   public async getDeviceEnvelope(accountId: string, deviceId: string): Promise<ExtendedDeviceEnvelope | null> {

@@ -1,21 +1,21 @@
 export type FeatureType = {
   featureName: string;
-  featureClass: FeatureClass;
+  featureTypes: FeatureTypes;
   featureKey: string;
   featureEtag: string;
 };
 
-export type FeatureClass = 'VFS' | 'KEYVALUE' | 'LIST' | 'CRDTLIST';
+export type FeatureTypes = 'VFS' | 'KEYVALUE' | 'LIST' | 'CRDTLIST';
 
 export class Feature implements FeatureType {
   featureName: string;
-  featureClass: FeatureClass;
+  featureTypes: FeatureTypes;
   featureKey: string;
   featureEtag: string;
 
-  constructor(featureName: string, featureClass: FeatureClass, featureKey: string = '', featureEtag: string = '') {
+  constructor(featureName: string, featureTypes: FeatureTypes, featureKey: string = '', featureEtag: string = '') {
     this.featureName = featureName;
-    this.featureClass = featureClass;
+    this.featureTypes = featureTypes;
     this.featureKey = featureKey;
     this.featureEtag = featureEtag;
   }

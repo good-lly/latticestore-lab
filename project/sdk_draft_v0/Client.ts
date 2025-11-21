@@ -14,7 +14,31 @@ import { base64ToUint8Array, fromUint8Array, toUint8Array } from './Helpers';
 
 import { CUSTOM_DEVICE_LIST_STRING, CUSTOM_FEATURES_LIST_STRING, DEFAULT_AEAD_KEY_LENGTH_BYTES } from './Consts';
 
+async function _verifySecurityContext() {
+  const checks = {
+    crossOriginIsolated: window.crossOriginIsolated,
+    secureContext: window.isSecureContext,
+    https: location.protocol === 'https:',
+  };
+
+  console.log('Security Context:', checks);
+
+  if (!checks.crossOriginIsolated) {
+    console.warn('⚠️ Not cross-origin isolated - vulnerable config');
+    console.warn('Check COOP/COEP headers are set correctly');
+  }
+
+  if (!checks.secureContext) {
+    console.error('❌ Not a secure context - WebCrypto limited');
+  }
+
+  return checks;
+}
+
 export class LatticeStoreClient {
+  constructor() {
+    _verifySecurityContext();
+  }
   public async registerNewAccount(
     serviceUrl: string,
     username: string,
@@ -76,12 +100,17 @@ export class LatticeStoreClient {
     }
   }
 
-  public async login(serviceUrl: string, thisDeviceMasterSeed: Uint8Array = new Uint8Array()): Promise<Account> {
+  public async login(
+    serviceUrl: string,
+    username: string,
+    thisDeviceMasterSeed: Uint8Array = new Uint8Array(),
+  ): Promise<Account> {
     try {
       const { kemSeed, dsaSeed } = CryptoUtils.deriveSeeds(thisDeviceMasterSeed);
       // thisDeviceMasterSeed.fill(0);
       const thisDeviceCredentials = await DeviceUtils.getDeviceCredentialsFromSeeds(kemSeed, dsaSeed);
       const loginPayload: LoginRequest = {
+        username: username,
         deviceId: thisDeviceCredentials.deviceId,
       };
       const response = (await signedRequest(
