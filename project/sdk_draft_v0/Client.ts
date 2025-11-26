@@ -10,9 +10,14 @@ import { DeviceUtils, RECOVERY_DEVICE_NAME } from './DeviceUtils';
 import type { DeviceEnvelope, ExtendedDeviceEnvelope } from './DeviceUtils';
 
 import { Account } from './Account';
-import { base64ToUint8Array, fromUint8Array, toUint8Array } from './Helpers';
+import { base64ToUint8Array, fromUint8Array, toUint8Array, uint8ArrayToHex } from './Helpers';
 
-import { CUSTOM_DEVICE_LIST_STRING, CUSTOM_FEATURES_LIST_STRING, DEFAULT_AEAD_KEY_LENGTH_BYTES } from './Consts';
+import {
+  CUSTOM_DEVICE_LIST_STRING,
+  CUSTOM_FEATURES_LIST_STRING,
+  DEFAULT_AEAD_KEY_LENGTH_BYTES,
+  DEFAULT_SEED_LENGTH_BYTES,
+} from './Consts';
 
 async function _verifySecurityContext() {
   const checks = {
@@ -43,20 +48,20 @@ export class LatticeStoreClient {
     serviceUrl: string,
     username: string,
     deviceName: string,
-    masterSeedString: string,
+    deviceSeedString: string,
     email?: string,
   ) {
     try {
-      const thisFinalMasterSeed =
-        masterSeedString.length > 0
-          ? toUint8Array(masterSeedString)
-          : CryptoUtils.generateRandomBytes(DEFAULT_AEAD_KEY_LENGTH_BYTES);
-      const { kemSeed, dsaSeed } = CryptoUtils.deriveSeeds(thisFinalMasterSeed);
-      const recoverySeed = CryptoUtils.generateRandomBytes(DEFAULT_AEAD_KEY_LENGTH_BYTES);
+      const deviceSeed =
+        deviceSeedString.length > 0
+          ? toUint8Array(deviceSeedString)
+          : CryptoUtils.generateRandomBytes(DEFAULT_SEED_LENGTH_BYTES);
+      const { kemSeed, dsaSeed } = CryptoUtils.deriveSeeds(deviceSeed);
+      const recoverySeed = CryptoUtils.generateRandomBytes(DEFAULT_SEED_LENGTH_BYTES);
       const recoverySeedsPair = CryptoUtils.deriveSeeds(recoverySeed);
       const masterKey = AEAD.generateRawAEADKeyData();
       const [thisDeviceCredentials, recoveryDevice] = await Promise.all([
-        DeviceUtils.generateNewDeviceCredential(masterKey, kemSeed, dsaSeed), // local device is generated from user-provided seed
+        DeviceUtils.generateNewDeviceCredential(masterKey, kemSeed, dsaSeed), // local device is generated from user-provided device seed
         DeviceUtils.generateNewDeviceCredential(masterKey, recoverySeedsPair.kemSeed, recoverySeedsPair.dsaSeed), // recovery device is always random!
       ]);
       thisDeviceCredentials.deviceName = deviceName.trim();
@@ -67,15 +72,15 @@ export class LatticeStoreClient {
         DEFAULT_AEAD_KEY_LENGTH_BYTES,
       );
       const registerPayload: RegisterRequest = {
+        accountId: uint8ArrayToHex(CryptoUtils.generateRandomBytes(32)).toLowerCase(),
         username: username.trim(),
         devicePublicKey: thisDeviceCredentials.dsaPublicKeyBase64,
         deviceEnvelopes: [thisDeviceCredentials.envelope as DeviceEnvelope, recoveryDevice.envelope as DeviceEnvelope], // include device envelopes
         deviceListFile: await DeviceUtils.buildDeviceList([thisDeviceCredentials, recoveryDevice], deviceListKey),
-        devices: [thisDeviceCredentials.deviceId, recoveryDevice.deviceId],
         email: email?.trim(),
       };
       masterKey.fill(0); // Clear master key from memory
-      thisFinalMasterSeed.fill(0); // Clear master seed from memory
+      deviceSeed.fill(0); // Clear device seed from memory
       deviceListKey.fill(0);
       recoverySeedsPair.kemSeed.fill(0);
       recoverySeedsPair.dsaSeed.fill(0);

@@ -38,10 +38,9 @@ const _isValidRegistrationPayload = (body: RegisterRequest): boolean => {
       return false;
     }
   }
+  if (!_validateAccountId(body.accountId)) return false;
   if (!validateUsername(body.username)) return false;
   if (!_validateDeviceEnvelopes(body.deviceEnvelopes)) return false;
-  if (!Array.isArray(body.devices) || body.devices.length === 0) return false;
-  if (body.devices.length !== body.deviceEnvelopes.length) return false;
   if (body.email && !validateEmail(body.email)) return false;
   if (body.otherPublicUserData && !_isValidOtherPublicUserData(body.otherPublicUserData)) return false;
   return true;

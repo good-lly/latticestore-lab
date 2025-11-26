@@ -76,14 +76,16 @@ export class DeviceUtils {
     };
   }
 
-  public static buildDeviceList = async (devices: DeviceCredentials[], masterKey: Uint8Array): Promise<string> => {
+  public static buildDeviceList = async (devices: DeviceCredentials[], deviceListKey: Uint8Array): Promise<string> => {
     const deviceList = devices.map(device => ({
       deviceId: device.deviceId,
       deviceName: device.deviceName,
       kemPublicKeyHex: uint8ArrayToHex(device.kemPublicKey),
     }));
+    // const accountSeed = uint8ArrayToBase64(CryptoUtils.generateRandomBytes(DEFAULT_SEED_LENGTH_BYTES));
+    // deviceList.accountSeed = accountSeed ;
     const deviceListUint8Array = toUint8Array(JSON.stringify(deviceList));
-    const aeadMasterKey = await AEAD.importAEADKey(masterKey as RawAEADKey);
+    const aeadMasterKey = await AEAD.importAEADKey(deviceListKey as RawAEADKey);
     const encryptedDL = await AEAD.encrypt(aeadMasterKey, deviceListUint8Array as Uint8Array<ArrayBuffer>);
     return uint8ArrayToBase64(encryptedDL);
   };

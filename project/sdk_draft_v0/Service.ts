@@ -3,8 +3,6 @@ import { RegisterRequest, RegisterResponse, LoginRequest, LoginResponse } from '
 import { validateRegistrationRequest, validateLoginRequest, isValidSignature } from './Validators';
 import { AccountData, Accounts } from './Accounts';
 import { Tokens } from './Tokens';
-import { CryptoUtils } from './CryptoUtils';
-import { uint8ArrayToHex } from './Helpers';
 import { Admin } from './admin/Admin';
 
 export type RedisConfig = {
@@ -31,19 +29,19 @@ export class LatticeStoreService {
       if (!isValid) {
         throw new Error('Invalid registration request format');
       }
-      const newAccountId = uint8ArrayToHex(CryptoUtils.generateRandomBytes(32)).toLowerCase();
-      const alreadyExistsAndUsername = await this._accounts.existingAccount(newAccountId, body.username);
+
+      const alreadyExistsAndUsername = await this._accounts.existingAccount(body.accountId, body.username);
       if (alreadyExistsAndUsername) {
         throw new Error('Account name or ID already exists');
       }
       const accountData: AccountData = {
-        accountId: newAccountId,
+        accountId: body.accountId,
         username: body.username,
         email: body.email || '',
         createdAt: new Date().toISOString(),
         updatedAt: new Date().toISOString(),
         deviceCount: body.deviceEnvelopes.length || 0,
-        devices: body.devices || [],
+        devices: body.deviceEnvelopes.map(d => d.deviceId),
         otherPublicUserData: body.otherPublicUserData || [],
       };
       const account = await this._accounts.create(accountData, body.deviceEnvelopes, body.deviceListFile);

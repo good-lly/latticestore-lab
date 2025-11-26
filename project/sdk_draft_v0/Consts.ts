@@ -99,6 +99,7 @@ export const DSA_KEY_LENGTH_BYTES = 32;
 export const TOKEN_LENGTH_BYTES = 64;
 
 export const DEFAULT_AEAD_KEY_LENGTH_BYTES = 32;
+export const DEFAULT_SEED_LENGTH_BYTES = 32;
 
 export const CUSTOM_KEM_STRING = '*incredibly_unique-custom_string_for_KEM&LatticeStore*';
 export const CUSTOM_DSA_STRING = '*incredibly_unique-custom_string_for_ML-DSA&LatticeStore*';
@@ -114,9 +115,10 @@ export const VALIDATION_RULES = {
     description: 'Alphanumeric, underscore, and hyphen only',
   },
   email: {
-    minLength: 5,
+    minLength: 6,
     maxLength: 256,
-    pattern: /^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$/,
+    pattern:
+      /^[a-zA-Z0-9.!#$%&'*+/=?^_`{|}~-]+@[a-zA-Z0-9](?:[a-zA-Z0-9-]{0,61}[a-zA-Z0-9])?(?:\.[a-zA-Z0-9](?:[a-zA-Z0-9-]{0,61}[a-zA-Z0-9])?)*\.[a-zA-Z]{2,}$/,
     description: 'Standard email format',
   },
   displayName: {
@@ -144,7 +146,7 @@ export const VALIDATION_RULES = {
     requiredFields: ['Content-SHA256', 'X-Timestamp', 'X-Request-ID', 'X-Signature'],
   },
   deviceRegistrationPayload: {
-    requiredFields: ['devicePublicKey', 'deviceEnvelopes', 'deviceListFile', 'devices', 'username'],
+    requiredFields: ['accountId', 'devicePublicKey', 'deviceEnvelopes', 'deviceListFile', 'username'],
   },
   deviceLoginPayload: {
     requiredFields: ['username', 'deviceId'],

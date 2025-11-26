@@ -23,12 +23,12 @@ export type LoginResponse = {
 };
 
 export type RegisterRequest = {
+  accountId: string;
   username: string;
   devicePublicKey: string;
   deviceEnvelopes: DeviceEnvelope[];
   deviceListFile: string;
   featuresList?: string | undefined;
-  devices: string[];
   email?: string | undefined;
   otherPublicUserData?: Record<string, string>[] | undefined;
 };
