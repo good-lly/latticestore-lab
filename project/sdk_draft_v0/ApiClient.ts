@@ -1,43 +1,33 @@
-import { AccountData } from './Accounts';
-import { CryptoPQ } from './CryptoPQ';
+// import type { AccountData } from './Accounts';
+// import { CryptoPQ } from './CryptoPQ';
 import { CryptoUtils } from './CryptoUtils';
-import { DeviceEnvelope, ExtendedDeviceEnvelope } from './DeviceUtils';
-import { uint8ArrayToBase64, generateCanonicalJSON, fromUint8Array } from './Helpers';
+import type { MemberSecrets, Vault, VaultRegistrationPayload } from './Vault';
+import { fromUint8Array } from './Helpers';
 
 // ===== TYPES =====
 
 export type LoginRequest = {
-  username: string;
-  deviceId: string;
+  payload: {
+    username: string;
+    vaultId: string;
+  };
 };
 
-export type LoginResponse = {
-  ok: boolean;
-  accountInfo: AccountData;
-  deviceEnvelope: ExtendedDeviceEnvelope;
-  featuresList: string | null;
-  authToken: string;
-  message?: string;
-  code: number;
-  reqId: string;
-};
-
-export type RegisterRequest = {
-  accountId: string;
-  username: string;
-  devicePublicKey: string;
-  deviceEnvelopes: DeviceEnvelope[];
-  deviceListFile: string;
-  featuresList?: string | undefined;
-  email?: string | undefined;
-  otherPublicUserData?: Record<string, string>[] | undefined;
-};
+// export type LoginResponse = {
+//   ok: boolean;
+//   accountInfo: AccountData;
+//   deviceEnvelope: ExtendedDeviceEnvelope;
+//   featuresList: string | null;
+//   authToken: string;
+//   message?: string;
+//   code: number;
+//   reqId: string;
+// };
 
 export type RegisterResponse = {
   ok: boolean;
   message: string;
   code: number;
-  reqId: string;
 };
 
 export type UploadObjectRequest = {
@@ -65,6 +55,7 @@ export type ObjectResult = {
 
 export type SignedAuth = {
   type: 'signed';
+  signerId: string;
   secretSignKey: Uint8Array;
   payload: any;
 };
@@ -74,14 +65,14 @@ export type BearerAuth = {
   token: string;
 };
 
-export type AuthConfig = SignedAuth | BearerAuth;
+export type AuthConfig = SignedAuth | BearerAuth | undefined;
 
 // ===== REQUEST OPTIONS =====
 
 export interface RequestOptions {
-  method?: 'GET' | 'POST' | 'PUT' | 'DELETE';
-  body?: any;
-  headers?: Record<string, string>;
+  method?: 'GET' | 'POST' | 'PUT' | 'DELETE' | 'OPTIONS';
+  body?: Vault | any;
+  headers?: Record<string, string> | undefined;
   auth?: AuthConfig;
 }
 
@@ -152,31 +143,32 @@ export class ResponseParser {
 /**
  * Prepare headers and body for signed authentication
  */
-const prepareSignedAuth = async (
-  signedAuth: SignedAuth,
-  headers: Record<string, string>,
-): Promise<{ headers: Record<string, string>; body: string; requestId: string }> => {
-  const bodyJson = generateCanonicalJSON(signedAuth.payload);
-  const contentSha256 = await CryptoUtils.sha256(bodyJson, 'hex');
-  const timestamp = Date.now().toString();
-  const requestId = CryptoUtils.generateRandomUUID();
+// const prepareSignedAuth = async (
+//   signedAuth: SignedAuth,
+//   headers: Record<string, string>,
+// ): Promise<{ headers: Record<string, string>; body: string; requestId: string }> => {
+//   const bodyJson = generateCanonicalJSON(signedAuth.payload);
+//   const contentSha256 = await CryptoUtils.sha256(bodyJson, 'hex');
+//   const timestamp = Date.now().toString();
+//   const requestId = CryptoUtils.generateRandomUUID();
 
-  const stringToSign = [contentSha256, timestamp, requestId].join('\n');
-  const signature = uint8ArrayToBase64(CryptoPQ.sign(signedAuth.secretSignKey, stringToSign));
+//   const stringToSign = [signedAuth.signerId, contentSha256, timestamp, requestId].join('\n');
+//   const signature = uint8ArrayToBase64(CryptoPQ.sign(signedAuth.secretSignKey, stringToSign));
 
-  return {
-    headers: {
-      ...headers,
-      'Content-SHA256': contentSha256 as string,
-      'X-Timestamp': timestamp,
-      'X-Request-ID': requestId,
-      'X-Signature': `Signature ${signature}`,
-      'Content-Type': 'application/json',
-    },
-    body: bodyJson,
-    requestId,
-  };
-};
+//   return {
+//     headers: {
+//       ...headers,
+//       'Content-SHA256': contentSha256 as string,
+//       'X-Timestamp': timestamp,
+//       'X-Request-ID': requestId,
+//       'X-Signer-ID': signedAuth.signerId,
+//       'X-Signature': `Signature ${signature}`,
+//       'Content-Type': 'application/json',
+//     },
+//     body: bodyJson,
+//     requestId,
+//   };
+// };
 
 /**
  * Prepare headers for bearer token authentication
@@ -235,12 +227,12 @@ const serializeBody = (
 /**
  * Validate request/response ID match
  */
-const validateRequestId = (response: Response, expectedRequestId: string): void => {
-  const responseRequestId = response.headers.get('X-Request-ID');
-  if (responseRequestId !== expectedRequestId) {
-    throw new Error('Request ID mismatch');
-  }
-};
+// const validateRequestId = (response: Response, expectedRequestId: string): void => {
+//   const responseRequestId = response.headers.get('X-Request-ID');
+//   if (responseRequestId !== expectedRequestId) {
+//     throw new Error('Request ID mismatch');
+//   }
+// };
 
 /**
  * Handle error response
@@ -256,18 +248,20 @@ const _fetchRequest = async (url: string, options: RequestOptions = {}): Promise
 
   let headers = { ...customHeaders };
   let requestBody: string | undefined;
-  let requestId: string = '';
+  // let requestId: string = '';
 
-  // Handle authentication
-  if (auth?.type === 'signed') {
-    const prepared = await prepareSignedAuth(auth, headers);
-    headers = prepared.headers;
-    requestBody = prepared.body;
-    requestId = prepared.requestId;
-  } else if (auth?.type === 'bearer') {
+  // // Handle authentication
+  // if (auth?.type === 'signed') {
+  //   const prepared = await prepareSignedAuth(auth, headers);
+  //   headers = prepared.headers;
+  //   requestBody = prepared.body;
+  //   requestId = prepared.requestId;
+  // }
+
+  if (auth?.type === 'bearer') {
     const prepared = prepareBearerAuth(auth.token, headers);
     headers = prepared.headers;
-    requestId = prepared.requestId;
+    // requestId = prepared.requestId;
   }
 
   // Handle body for non-signed requests
@@ -283,12 +277,9 @@ const _fetchRequest = async (url: string, options: RequestOptions = {}): Promise
     fetchOptions.body = requestBody;
   }
 
-  // Make the request
   const response = await fetch(url, fetchOptions);
 
-  validateRequestId(response, requestId);
-
-  // Check response status
+  // validateRequestId(response, requestId);
   if (!response.ok) {
     await handleErrorResponse(response);
   }
@@ -303,16 +294,32 @@ const _fetchRequest = async (url: string, options: RequestOptions = {}): Promise
  */
 export const signedRequest = async <T = any>(
   url: string,
-  payload: RegisterRequest | LoginRequest,
-  secretSignKey: Uint8Array,
+  payload: VaultRegistrationPayload | LoginRequest,
+  signer: MemberSecrets,
 ): Promise<T> => {
   const parser = await _fetchRequest(url, {
     method: 'POST',
     auth: {
       type: 'signed',
-      secretSignKey,
+      signerId: signer.memberId,
+      secretSignKey: signer.dsaSecretKey,
       payload,
     },
+  });
+
+  return parser.json<T>();
+};
+export const makeRequest = async <T = any>(
+  url: string,
+  method: 'GET' | 'POST' | 'PUT' | 'DELETE',
+  body?: Vault,
+  headers?: Record<string, string>,
+): Promise<T> => {
+  const parser = await _fetchRequest(url, {
+    method,
+    body,
+    headers,
+    auth: undefined,
   });
 
   return parser.json<T>();

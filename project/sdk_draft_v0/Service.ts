@@ -1,121 +1,108 @@
 import { S3mini, S3Config } from 's3mini';
-import { RegisterRequest, RegisterResponse, LoginRequest, LoginResponse } from './ApiClient';
-import { validateRegistrationRequest, validateLoginRequest, isValidSignature } from './Validators';
-import { AccountData, Accounts } from './Accounts';
-import { Tokens } from './Tokens';
+import type { RegisterResponse } from './ApiClient';
+import type { Vault } from './Vault';
+import { validateRegistrationRequest } from './Validators';
+import { Accounts } from './Accounts';
 import { Admin } from './admin/Admin';
-
-export type RedisConfig = {
-  REDIS_URL: string;
-  REDIS_TOKEN: string;
-};
+import { VAULTS_NAMESPACE } from './Consts';
+import { Keyv } from 'keyv';
+import type { KeyvStoreAdapter } from 'keyv';
 
 export class LatticeStoreService {
   private _s3: S3mini;
-  private _redisConfig: RedisConfig;
+  private _vaultRedis: Keyv;
   private _accounts: Accounts;
-  private _tokens: Tokens;
 
-  constructor(S3config: S3Config, redisConfig: RedisConfig) {
+  constructor(S3config: S3Config, keyvAdapter: KeyvStoreAdapter) {
     this._s3 = new S3mini(S3config);
-    this._redisConfig = redisConfig;
-    this._accounts = new Accounts(this._s3, this._redisConfig);
-    this._tokens = new Tokens(this._redisConfig);
+    this._vaultRedis = new Keyv({
+      store: keyvAdapter,
+      useKeyPrefix: false,
+      namespace: VAULTS_NAMESPACE,
+      serialize: JSON.stringify,
+      deserialize: JSON.parse,
+    });
+    this._accounts = new Accounts(this._s3, this._vaultRedis);
   }
 
-  public async register(headers: Headers, body: RegisterRequest): Promise<RegisterResponse> {
+  public async register(body: Vault): Promise<RegisterResponse> {
     try {
-      const isValid = await validateRegistrationRequest(headers, body);
-      if (!isValid) {
+      const [validated, existingId, existingName] = await Promise.all([
+        validateRegistrationRequest(body),
+        this._accounts.existingId(body.payload.id),
+        this._accounts.existingName(body.payload.name),
+      ]);
+      if (!validated) {
         throw new Error('Invalid registration request format');
       }
-
-      const alreadyExistsAndUsername = await this._accounts.existingAccount(body.accountId, body.username);
-      if (alreadyExistsAndUsername) {
-        throw new Error('Account name or ID already exists');
+      if (existingId || existingName) {
+        throw new Error('Vault ID or name already exists');
       }
-      const accountData: AccountData = {
-        accountId: body.accountId,
-        username: body.username,
-        email: body.email || '',
-        createdAt: new Date().toISOString(),
-        updatedAt: new Date().toISOString(),
-        deviceCount: body.deviceEnvelopes.length || 0,
-        devices: body.deviceEnvelopes.map(d => d.deviceId),
-        otherPublicUserData: body.otherPublicUserData || [],
-      };
-      const account = await this._accounts.create(accountData, body.deviceEnvelopes, body.deviceListFile);
-
-      // const account = await this._auth.createNewAccount(newAccountId, body);
-      // Notifications.sendWelcomeEmail(account);
-
       return {
-        ok: account,
-        message: `Registration request ${account ? 'successful' : 'failed'}`,
-        reqId: headers.get('X-Request-ID') || '',
+        ok: await this._accounts.createAccount(body),
+        message: 'Vault registration successful',
         code: 200,
       };
     } catch (error) {
-      // throw new Error(`Registration request validation failed: ${(error as Error).message}`);
       return {
         ok: false,
-        message: `Registration request validation failed: ${error instanceof Error ? error.message : 'unknown error'}`,
-        reqId: headers.get('X-Request-ID') || '',
+        message: `Registration request failed: ${(error as Error).message}`,
         code: 400,
       };
     }
   }
-  public async login(headers: Headers, body: LoginRequest): Promise<LoginResponse> {
-    try {
-      const isValid = await validateLoginRequest(headers, body);
-      if (!isValid) {
-        throw new Error('Invalid login request format');
-      }
-      const { accountId, deviceEnvelope } = await this._accounts.getAccountByUsernamePlusDeviceId(
-        body.username,
-        body.deviceId,
-      );
-      if (!accountId || accountId.length === 0 || accountId === null) {
-        throw new Error('Username does not exist');
-      }
-      const [accountInfo, featuresList] = await Promise.all([
-        this._accounts.getAccountData(accountId),
-        this._accounts.getFeaturesList(accountId),
-      ]);
-      if (!deviceEnvelope || !accountInfo) {
-        throw new Error('Fuckup, Device or account does not exist');
-      }
-      if (!isValidSignature(headers, deviceEnvelope.dsaPublicKeyBase64)) {
-        throw new Error('Invalid signature for login');
-      }
 
-      return {
-        ok: true,
-        accountInfo: accountInfo as AccountData,
-        deviceEnvelope: deviceEnvelope,
-        featuresList: featuresList,
-        authToken: await this._tokens.generateTokenForDevice(body.deviceId),
-        reqId: headers.get('X-Request-ID') || '',
-        code: 200,
-      };
-    } catch (error) {
-      throw new Error(`Login request validation failed: ${(error as Error).message}`);
-    }
-  }
+  // public async login(body: LoginRequest): Promise<LoginResponse> {
+  //   try {
+  //     const isValid = await validateLoginRequest(body);
+  //     if (!isValid) {
+  //       throw new Error('Invalid login request format');
+  //     }
+  //     const { accountId, deviceEnvelope } = await this._accounts.getAccountByUsernamePlusDeviceId(
+  //       body.username,
+  //       body.deviceId,
+  //     );
+  //     if (!accountId || accountId.length === 0 || accountId === null) {
+  //       throw new Error('Username does not exist');
+  //     }
+  //     const [accountInfo, featuresList] = await Promise.all([
+  //       this._accounts.getAccountData(accountId),
+  //       this._accounts.getFeaturesList(accountId),
+  //     ]);
+  //     if (!deviceEnvelope || !accountInfo) {
+  //       throw new Error('Fuckup, Device or account does not exist');
+  //     }
+  //     if (!isValidSignature(headers, deviceEnvelope.dsaPublicKeyBase64)) {
+  //       throw new Error('Invalid signature for login');
+  //     }
 
-  // ONLY FOR DEVELOPMENT AND TESTING PURPOSES
-  public async listAll(): Promise<{ accounts: AccountData[]; allS3File: string[] | null }> {
-    const data = (await Admin.listAccounts(this._s3, this._redisConfig)) as {
-      accounts: AccountData[];
-      allS3File: string[] | null;
-    };
-    return data;
-  }
+  //     return {
+  //       ok: true,
+  //       accountInfo: accountInfo as AccountData,
+  //       deviceEnvelope: deviceEnvelope,
+  //       featuresList: featuresList,
+  //       authToken: await this._tokens.generateTokenForDevice(body.deviceId),
+  //       reqId: headers.get('X-Request-ID') || '',
+  //       code: 200,
+  //     };
+  //   } catch (error) {
+  //     throw new Error(`Login request validation failed: ${(error as Error).message}`);
+  //   }
+  // }
 
-  public async deleteAll(): Promise<{ accounts: AccountData[]; allS3File: string[] | null }> {
-    await Admin.deleteAll(this._s3, this._redisConfig);
-    const data = (await Admin.listAccounts(this._s3, this._redisConfig)) as {
-      accounts: AccountData[];
+  // // ONLY FOR DEVELOPMENT AND TESTING PURPOSES
+  // public async listAll(): Promise<{ accounts: AccountData[]; allS3File: string[] | null }> {
+  //   const data = (await Admin.listAccounts(this._s3, this._redisConfig)) as {
+  //     accounts: AccountData[];
+  //     allS3File: string[] | null;
+  //   };
+  //   return data;
+  // }
+
+  public async deleteAll(): Promise<{ accounts: Record<string, any>[]; allS3File: string[] | null }> {
+    await Admin.deleteAll(this._s3, this._vaultRedis);
+    const data = (await Admin.listAccounts(this._s3, this._vaultRedis)) as {
+      accounts: Record<string, any>[];
       allS3File: string[] | null;
     };
     return data;

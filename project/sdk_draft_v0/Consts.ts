@@ -1,3 +1,61 @@
+export type MemberRole = 'OWNER' | 'ADMIN' | 'MEMBER' | 'VIEWER' | 'TEMP';
+export type MemberStatus = 'ACTIVE' | 'INVITED' | 'REMOVED';
+
+declare const __brand: unique symbol;
+export type Brand<T, B> = T & { [__brand]: B };
+
+export type Base64<T = unknown> = string & { readonly __base64: T };
+export type Base64Encrypted<T = unknown> = string & { readonly __encrypted: T };
+export type Timestamp = Brand<number, 'Timestamp'>;
+export type Hex256 = Brand<string, 'Hex256'>;
+
+// ID types
+export type FileId = Brand<string, 'FileId'>;
+export type AccountId = Brand<string, 'AccountId'>;
+export type MemberId = Brand<string, 'MemberId'>;
+export type ChunkId = Brand<string, 'ChunkId'>;
+export type VaultId = Brand<string, 'VaultId'>;
+export type VaultType = 'personal' | 'team';
+
+export const VAULTS_NAMESPACE = 'VAULTS';
+export const NAME_MAPPING = 'NAME2ID';
+export const RECOVERY_DEVICE_NAME = '__RECOVERY_DEVICE__';
+
+export const VAULT_TYPE: Record<VaultType, VaultType> = Object.freeze({
+  personal: 'personal',
+  team: 'team',
+});
+
+export const MEMBER_STATUS: Record<MemberStatus, MemberStatus> = Object.freeze({
+  ACTIVE: 'ACTIVE',
+  INVITED: 'INVITED',
+  REMOVED: 'REMOVED',
+});
+export const ROLE: Record<MemberRole, MemberRole> = Object.freeze({
+  OWNER: 'OWNER',
+  ADMIN: 'ADMIN',
+  MEMBER: 'MEMBER',
+  VIEWER: 'VIEWER',
+  TEMP: 'TEMP',
+});
+export const PERMISSIONS: Record<MemberRole, Set<string>> = Object.freeze({
+  OWNER: new Set(['read', 'write', 'manage', 'delete_vault']),
+  ADMIN: new Set(['read', 'write', 'manage']),
+  MEMBER: new Set(['read', 'write']),
+  VIEWER: new Set(['read']),
+  TEMP: new Set(['read']),
+});
+
+export const IS_MANAGER_KEY = (role: MemberRole): boolean => {
+  if (!(role in PERMISSIONS)) {
+    throw new Error(`Invalid member role: ${role}`);
+  }
+  if (PERMISSIONS[role].has('manage')) {
+    return true;
+  }
+  return false;
+};
+
 export const RESERVED_USERNAMES = [
   // System & Admin
   'admin',
@@ -104,11 +162,13 @@ export const DEFAULT_SEED_LENGTH_BYTES = 32;
 export const CUSTOM_KEM_STRING = '*incredibly_unique-custom_string_for_KEM&LatticeStore*';
 export const CUSTOM_DSA_STRING = '*incredibly_unique-custom_string_for_ML-DSA&LatticeStore*';
 
-export const CUSTOM_DEVICE_LIST_STRING = '*incredibly_unique-custom_string_for_DEVICE_LISTcrypt0&LatticeStore*';
+export const MEMBER_ID_STRING = '*incredibly_unique-custom_string_for_MEMBER_ID&LatticeStore*';
+export const CUSTOM_SUBKEY_ROLE_STRING = '*incredibly_unique-custom_string_for_SUBKEY_ROLE&LatticeStore*';
+export const CUSTOM_MANAGER_KEY_STRING = '*incredibly_unique-custom_string_for_MANAGER_KEY&LatticeStore*';
 export const CUSTOM_FEATURES_LIST_STRING = '*incredibly_unique-custom_string_for_FEATURES_LISTcrypt0&LatticeStore*';
 
 export const VALIDATION_RULES = {
-  username: {
+  accountName: {
     minLength: 5,
     maxLength: 256,
     pattern: /^[a-zA-Z0-9_-]+$/,
@@ -121,13 +181,7 @@ export const VALIDATION_RULES = {
       /^[a-zA-Z0-9.!#$%&'*+/=?^_`{|}~-]+@[a-zA-Z0-9](?:[a-zA-Z0-9-]{0,61}[a-zA-Z0-9])?(?:\.[a-zA-Z0-9](?:[a-zA-Z0-9-]{0,61}[a-zA-Z0-9])?)*\.[a-zA-Z]{2,}$/,
     description: 'Standard email format',
   },
-  displayName: {
-    minLength: 5,
-    maxLength: 256,
-    pattern: /^[\p{L}\p{N}\p{P}\p{Z}]+$/u,
-    description: 'Display name in any language',
-  },
-  deviceName: {
+  vaultName: {
     minLength: 3,
     maxLength: 128,
     pattern: /^[\x20-\x7E]+$/,
@@ -138,17 +192,43 @@ export const VALIDATION_RULES = {
     pattern: /^[a-f0-9]{64}$/,
     description: '64 hex characters (lowercase)',
   },
-  deviceRegistrationEnvelopes: {
-    minCount: 2,
-    requiredFields: ['deviceId', 'dsaPublicKeyBase64', 'encryptedMasterKeyHex', 'cipherTextHex'],
-  },
+
   signedHeaders: {
-    requiredFields: ['Content-SHA256', 'X-Timestamp', 'X-Request-ID', 'X-Signature'],
+    requiredFields: ['content-sha256', 'x-timestamp', 'x-request-id', 'x-signer-id', 'x-signature'],
   },
-  deviceRegistrationPayload: {
-    requiredFields: ['accountId', 'devicePublicKey', 'deviceEnvelopes', 'deviceListFile', 'username'],
+  vaultMemberSlots: {
+    minCount: 1,
+    requiredFields: [
+      'memberId',
+      'memberRole',
+      'memberStatus',
+      'memberKemCiphertext',
+      'memberVaultKeyWrapped',
+      'memberDsaPubkey',
+      'createdAt',
+      'updatedAt',
+    ],
   },
-  deviceLoginPayload: {
-    requiredFields: ['username', 'deviceId'],
+  vaultRegistrationBody: {
+    requiredFields: ['payload', 'payloadHash', 'signerId', 'signature'] as const[],
+  },
+  vaultRegistrationPayload: {
+    requiredFields: [
+      'version',
+      'name',
+      'type',
+      'id',
+      'dsaPubkey',
+      'kemPubkey',
+      'memberSlots',
+      'managerOnlyMemberList',
+      'managerOnlyArea',
+      'keyEpoch',
+      'createdAt',
+      'updatedAt',
+    ] as const[],
+  },
+  vaultLoginPayload: {
+    requiredFields: ['username', 'vaultId'],
   },
 } as const;

@@ -1,11 +1,18 @@
 import { cshake256 } from '@noble/hashes/sha3-addons.js';
-import { toUint8Array } from './Helpers.js';
-import { KEM_KEY_LENGTH_BYTES, DSA_KEY_LENGTH_BYTES, CUSTOM_KEM_STRING, CUSTOM_DSA_STRING } from './Consts.js';
+import { toUint8Array, uint8ArrayToHex } from './Helpers.js';
+import {
+  KEM_KEY_LENGTH_BYTES,
+  DSA_KEY_LENGTH_BYTES,
+  CUSTOM_KEM_STRING,
+  CUSTOM_DSA_STRING,
+  DEFAULT_AEAD_KEY_LENGTH_BYTES,
+  IS_MANAGER_KEY,
+  CUSTOM_SUBKEY_ROLE_STRING,
+  MEMBER_ID_STRING,
+} from './Consts.js';
+import type { MemberRole } from './Consts.js';
 export class CryptoUtilsError extends Error {
-  constructor(
-    message: string,
-    public readonly code: string,
-  ) {
+  constructor(message: string, public readonly code: string) {
     super(message);
     this.name = 'CryptoUtilsError';
   }
@@ -103,5 +110,16 @@ export class CryptoUtils {
         'SHAKE256_HASHING_FAILED',
       );
     }
+  }
+
+  public static deriveKeyForRole(role: MemberRole, rootKey: Uint8Array): Uint8Array {
+    if (IS_MANAGER_KEY(role)) {
+      return rootKey;
+    }
+    return this.letscShake256(rootKey, toUint8Array(CUSTOM_SUBKEY_ROLE_STRING), DEFAULT_AEAD_KEY_LENGTH_BYTES);
+  }
+
+  public static computeMemberId(dsaPublicKey: Uint8Array): string {
+    return uint8ArrayToHex(this.letscShake256(dsaPublicKey, toUint8Array(MEMBER_ID_STRING), 32)).toLowerCase();
   }
 }

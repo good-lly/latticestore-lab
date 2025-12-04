@@ -1,6 +1,7 @@
 import { Hono } from 'hono';
 import { streamSSE } from 'hono/streaming';
 import { LatticeStoreService } from '../dist/sdk/Service.js';
+import { KeyvUpstash } from 'keyv-upstash';
 
 const IO_GB = 10 * 1024 * 1024 * 1024; // 10 GB in bytes
 
@@ -29,7 +30,12 @@ api.use('*', async (c, next) => {
       endpoint: S3_ENDPOINT,
       region: S3_REGION,
     },
-    { REDIS_URL, REDIS_TOKEN },
+    new KeyvUpstash({
+      url: REDIS_URL,
+      token: REDIS_TOKEN,
+      enableTelemetry: false,
+      automaticDeserialization: false,
+    }),
   );
   c.set('lattice', ls);
   await next();
@@ -68,15 +74,15 @@ api.post('login', async c => {
 // TBD rework
 api.post('register', async c => {
   const body = await c.req.json();
-  const headers = c.req.raw.headers;
-  console.log('Register headers: ', headers);
+  // const headers = c.req.raw.headers;
+  // console.log('Register headers: ', headers);
   const ls = c.get('lattice');
   if (!ls) {
     return c.json({ ok: false, message: 'Service not initialized' }, 500);
   }
-  const regResponse = await ls.register(headers, body);
+  const regResponse = await ls.register(body);
   console.log('Registration response: ', regResponse);
-  c.header('x-request-id', headers.get('x-request-id'));
+  // c.header('x-request-id', headers.get('x-request-id'));
   return c.json(regResponse);
   // const users = c.get('users');
 

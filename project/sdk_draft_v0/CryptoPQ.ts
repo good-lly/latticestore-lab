@@ -13,10 +13,7 @@ export type CryptoPQEncapsulated = {
 };
 
 export class CryptoPQError extends Error {
-  constructor(
-    message: string,
-    public readonly code: string,
-  ) {
+  constructor(message: string, public readonly code: string) {
     super(message);
     this.name = 'CryptoPQError';
   }
@@ -137,9 +134,12 @@ export class CryptoPQ {
    * @param {Uint8Array} signature - The signature to verify.
    * @returns {boolean} True if the signature is valid, false otherwise.
    */
-  static verifySignature(publicKey: Uint8Array, message: Uint8Array, signature: Uint8Array): boolean {
+  static verifySignature(publicKey: Uint8Array, message: Uint8Array | string, signature: Uint8Array): boolean {
     if (signature.length !== ML_DSA_SIGNATURE_SIZE) {
       throw new CryptoPQError('Invalid signature length', 'INVALID_SIGNATURE_LENGTH');
+    }
+    if (typeof message === 'string') {
+      message = new TextEncoder().encode(message);
     }
     if (publicKey.length !== ML_DSA_PUBLIC_KEY_SIZE) {
       throw new CryptoPQError('Invalid public key length', 'INVALID_PUBLIC_KEY_LENGTH');

@@ -1,24 +1,17 @@
-export type FeatureType = {
+import type { Brand, MemberId, Timestamp } from '../Consts.js';
+export type FeatureId = Brand<string, 'FeatureId'>;
+export type FeatureType = 'VFS' | 'KEYVALUE' | 'LIST' | 'CRDTLIST';
+
+export type Feature = {
+  featureId: FeatureId;
+  featureType: FeatureType;
   featureName: string;
-  featureTypes: FeatureTypes;
-  featureKey: string;
-  featureEtag: string;
+  featureEpoch: number;
+  featureCreatedAt: Timestamp;
+  featureCreatedById: MemberId | null;
+  featureModifiedAt: Timestamp;
+  featureModifiedById: MemberId | null;
+  featureArchived: boolean;
+  featureArchivedAt: Timestamp | null;
+  featureToDelete: boolean;
 };
-
-export type FeatureTypes = 'VFS' | 'KEYVALUE' | 'LIST' | 'CRDTLIST';
-
-export class Feature implements FeatureType {
-  featureName: string;
-  featureTypes: FeatureTypes;
-  featureKey: string;
-  featureEtag: string;
-
-  constructor(featureName: string, featureTypes: FeatureTypes, featureKey: string = '', featureEtag: string = '') {
-    this.featureName = featureName;
-    this.featureTypes = featureTypes;
-    this.featureKey = featureKey;
-    this.featureEtag = featureEtag;
-  }
-
-  // async init(): Promise<boolean> {}
-}

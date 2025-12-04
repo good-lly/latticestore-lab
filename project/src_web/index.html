@@ -1,4 +1,4 @@
-<!doctype html>
+<!DOCTYPE html>
 <html>
   <head>
     <meta charset="UTF-8" />
@@ -10,7 +10,7 @@
     />
     <script type="module">
       import { LatticeStoreClient } from '../dist/sdk/Client.js';
-      const lattice = new LatticeStoreClient();
+      const lattice = new LatticeStoreClient('http://localhost:8787/api');
       import Alpine from 'alpinejs';
       import persist from '@alpinejs/persist';
       import focus from '@alpinejs/focus';
@@ -77,8 +77,7 @@
         },
         async register(newUsername, password) {
           // console.log('Creating new user:', newUsername, lattice.registerNewAccount);
-          const registerResp = await lattice.registerNewAccount(
-            API_ENDPOINT,
+          const registerResp = await lattice.register(
             newUsername,
             this.devicename,
             new Uint8Array([1, 2, 3, 4, 5, 6, 7, 8, 9, 0]),

@@ -1,3 +1,5 @@
+import { DEFAULT_AEAD_KEY_LENGTH_BYTES } from './Consts';
+
 /**
  * AEAD (Authenticated Encryption with Associated Data)
  * Used for encrypting the actual content (RootFile) with symmetric keys
@@ -8,17 +10,14 @@ export type RawAEADKey = Uint8Array<ArrayBuffer> & { readonly __tag?: 'RawAEADKe
 export type AEADCryptoKey = CryptoKey & { readonly __tag?: 'AEADCryptoKey' };
 
 export class AEADError extends Error {
-  constructor(
-    message: string,
-    public readonly code: string,
-  ) {
+  constructor(message: string, public readonly code: string) {
     super(message);
     this.name = 'AEADError';
   }
 }
 
 export class AEAD {
-  private static readonly KEY_LENGTH = 32; // 256 bits
+  private static readonly KEY_LENGTH = DEFAULT_AEAD_KEY_LENGTH_BYTES; // 256 bits / 32 bytes
   private static readonly IV_LENGTH = 12; // 96 bits recommended for GCM
   private static readonly ALGORITHM = 'AES-GCM';
   private static readonly EXPORTABLE_KEY = false;

@@ -1,4 +1,7 @@
-import { LoginRequest, RegisterRequest } from './ApiClient';
+import { LoginRequest } from './ApiClient';
+import { CryptoUtils } from './CryptoUtils';
+import type { Timestamp } from './Consts.js';
+import type { VaultRegistrationPayload } from './Vault';
 
 export const encoder = new TextEncoder();
 export const decoder = new TextDecoder();
@@ -100,6 +103,14 @@ const _canonicalize = (obj: any): any => {
   return obj;
 };
 
-export const generateCanonicalJSON = (payload: RegisterRequest | LoginRequest): string => {
+export const generateCanonicalJSON = (payload: LoginRequest | VaultRegistrationPayload): string => {
   return JSON.stringify(_canonicalize(payload));
+};
+
+export const genId = (): string => {
+  return uint8ArrayToHex(CryptoUtils.generateRandomBytes(32)).toLowerCase();
+};
+
+export const now = (): Timestamp => {
+  return Date.now() as Timestamp;
 };
