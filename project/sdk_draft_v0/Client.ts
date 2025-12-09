@@ -6,7 +6,7 @@ import { AEAD } from './CryptoAEAD';
 import { CryptoPQ } from './CryptoPQ';
 import { Members } from './Members';
 import { CUSTOM_MANAGER_KEY_STRING, ROLE, VAULT_TYPE } from './Consts.js';
-import { Account } from './Account';
+import { createAccount } from './Account';
 import { toUint8Array, genId, uint8ArrayToBase64, now, generateCanonicalJSON } from './Helpers';
 import { DEFAULT_AEAD_KEY_LENGTH_BYTES, DEFAULT_SEED_LENGTH_BYTES, RECOVERY_DEVICE_NAME } from './Consts';
 
@@ -101,6 +101,7 @@ export class LatticeStoreClient {
         memberSlots: [thisDeviceCredentials.memberSlot, recoveryDeviceCredentials.memberSlot],
         managerOnlyMemberList: encryptedMemberList,
         managerOnlyArea: encryptedAccountSeed,
+        // featuresEncrypted: '' as Base64Encrypted<Feature[]>, // empty features list for now
         keyEpoch: 0,
         createdAt: timestamp,
         updatedAt: timestamp,
@@ -142,10 +143,9 @@ export class LatticeStoreClient {
 
   public async login(accountName: string, deviceSeed: Uint8Array, service: string = this._serviceUrl) {
     try {
-      const account = await Account._create(service, accountName, deviceSeed);
-      if (!!account) {
-        return account;
-      }
+      const account = await createAccount(service, accountName, deviceSeed);
+      console.log('Logged in account:', account);
+      return account;
     } catch (error) {
       throw error;
     }

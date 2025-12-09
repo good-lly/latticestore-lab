@@ -91,7 +91,7 @@ const _validateAccountName = (accountName: string): boolean => {
   );
 };
 
-export const _validateVaultName = (vaultName: string): boolean => {
+const _validateVaultName = (vaultName: string): boolean => {
   if (typeof vaultName !== 'string') return false;
   const trimmed = vaultName.trim();
   const rules = C.vaultName;

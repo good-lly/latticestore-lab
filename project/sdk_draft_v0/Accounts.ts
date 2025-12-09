@@ -48,7 +48,6 @@ export class Accounts {
 
   public async getPersonalVaultIdByName(vaultName: string): Promise<Vault | null> {
     const cached: string | undefined = await this.#vaultRedis.get(_redisNameMappingKey(vaultName));
-    console.log('Cached vault ID for name', vaultName, ':', cached);
     if (cached !== undefined) {
       const vault = await this.#vaultRedis.get(_redisManifestKey(cached));
       if (vault && vault.payload.type === 'personal') {
