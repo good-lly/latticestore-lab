@@ -1,5 +1,6 @@
-import type { LoginPayload } from './ApiClient';
 import { generateRandomBytes } from './CryptoUtils';
+
+import type { LoginPayload } from './ApiClient';
 import type { Timestamp } from './Consts.js';
 import type { VaultRegistrationPayload } from './Vault';
 

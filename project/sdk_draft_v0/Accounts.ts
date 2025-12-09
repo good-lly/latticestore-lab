@@ -1,7 +1,8 @@
 import { S3mini } from 's3mini';
-import type { Vault } from './Vault';
 import { Keyv } from '@keyv/redis';
 import { NAME_MAPPING } from './Consts';
+
+import type { Vault } from './Vault';
 
 const _s3manifestKey = (vaultId: string) => `${vaultId}/${vaultId}-manifest.json`;
 const _redisManifestKey = (vaultId: string) => `${vaultId}::manifest`;

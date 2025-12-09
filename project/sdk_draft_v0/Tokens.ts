@@ -1,8 +1,9 @@
 import { Keyv } from 'keyv';
-import type { KeyvStoreAdapter } from 'keyv';
 import { generateRandomBytes } from './CryptoUtils';
 import { uint8ArrayToHex } from './Helpers';
 import { TOKEN_EXPIRATION_SECONDS, TOKEN_LENGTH_BYTES, TOKEN_NAMESPACE } from './Consts';
+
+import type { KeyvStoreAdapter } from 'keyv';
 
 const tokenKeyPrefix = (memberId: string, vaultId: string): string => {
   return `${memberId}::${vaultId}`;

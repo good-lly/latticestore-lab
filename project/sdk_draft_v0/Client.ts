@@ -1,20 +1,18 @@
 'use strict';
 
 import { makeRequest } from './ApiClient';
-
 import { generateRandomBytes, letscShake256, deriveSeeds, sha256 } from './CryptoUtils';
-import { AEAD, RawAEADKey } from './CryptoAEAD';
-
+import { AEAD } from './CryptoAEAD';
+import { CryptoPQ } from './CryptoPQ';
 import { Members } from './Members';
 import { CUSTOM_MANAGER_KEY_STRING, ROLE, VAULT_TYPE } from './Consts.js';
-import type { VaultId, Base64, Base64Encrypted } from './Consts.js';
-
 import { Account } from './Account';
 import { toUint8Array, genId, uint8ArrayToBase64, now, generateCanonicalJSON } from './Helpers';
-
 import { DEFAULT_AEAD_KEY_LENGTH_BYTES, DEFAULT_SEED_LENGTH_BYTES, RECOVERY_DEVICE_NAME } from './Consts';
+
+import type { VaultId, Base64, Base64Encrypted } from './Consts.js';
+import type { RawAEADKey } from './CryptoAEAD';
 import type { VaultRegistrationPayload, Vault } from './Vault';
-import { CryptoPQ } from './CryptoPQ';
 
 const _verifySecurityContext = async () => {
   const checks = {

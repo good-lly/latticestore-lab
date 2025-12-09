@@ -1,11 +1,11 @@
 import { CryptoPQ } from './CryptoPQ';
 import { deriveSeeds, getMemberIdFromPubkey, sha256 } from './CryptoUtils';
-// import type { CryptoPQKeyPair } from './CryptoPQ';
-import type { MemberRole, MemberStatus } from './Consts';
-// import { createNetworkMonitor } from './NetworkUtils';
 import { generateCanonicalJSON, now, uint8ArrayToBase64 } from './Helpers';
-import { makeRequest, type LoginPayload, type LoginRequest } from './ApiClient';
+import { makeRequest } from './ApiClient';
 import { isValidVaultManifest } from './Validators';
+
+import type { MemberRole, MemberStatus } from './Consts';
+import type { LoginPayload, LoginRequest } from './ApiClient';
 
 // import { Feature } from './features/Features';
 // import type { FeatureType } from './features/Features';

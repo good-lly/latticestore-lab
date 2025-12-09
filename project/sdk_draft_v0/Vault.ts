@@ -8,8 +8,7 @@ import type {
   Timestamp,
   Base64Encrypted,
 } from './Consts.js';
-
-import { Feature } from './features/Features';
+import type { Feature } from './features/Features';
 
 export type MemberSlot = {
   memberId: MemberId;

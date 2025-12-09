@@ -1,14 +1,11 @@
+declare const __brand: unique symbol;
 export type MemberRole = 'OWNER' | 'ADMIN' | 'MEMBER' | 'VIEWER' | 'TEMP';
 export type MemberStatus = 'ACTIVE' | 'INVITED' | 'REMOVED';
-
-declare const __brand: unique symbol;
 export type Brand<T, B> = T & { [__brand]: B };
-
 export type Base64<T = unknown> = string & { readonly __base64: T };
 export type Base64Encrypted<T = unknown> = string & { readonly __encrypted: T };
 export type Timestamp = Brand<number, 'Timestamp'>;
 export type Hex256 = Brand<string, 'Hex256'>;
-
 // ID types
 export type FileId = Brand<string, 'FileId'>;
 export type AccountId = Brand<string, 'AccountId'>;

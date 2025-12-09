@@ -1,6 +1,7 @@
-import type { Vault } from './Vault';
 import { fromUint8Array } from './Helpers';
-import { Base64 } from './Consts';
+
+import type { Base64 } from './Consts';
+import type { Vault } from './Vault';
 
 // ===== TYPES =====
 

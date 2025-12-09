@@ -1,4 +1,4 @@
-type ConnectionCallback = (online: boolean) => void;
+export type ConnectionCallback = (online: boolean) => void;
 
 export type NetMonitorReturnType = {
   isOnline: () => boolean;

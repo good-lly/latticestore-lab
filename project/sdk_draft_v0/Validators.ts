@@ -5,11 +5,7 @@ import { VALIDATION_RULES as C, RESERVED_USERNAMES, ROLE, VAULT_TYPE, TIMESTAMP_
 
 import type { LoginRequest } from './ApiClient';
 import type { MemberSlot, Vault } from './Vault.js';
-
-// const _isValidOtherPublicUserData = (data: Record<string, string>[]): boolean => {
-//   if (!Array.isArray(data)) return false;
-//   return data.every(item => typeof item === 'object' && item !== null && 'key' in item && 'value' in item);
-// };
+import type { VaultType } from './Consts.js';
 
 const _isTimestampValid = (clientTime: number): boolean => {
   const serverTime = now();
@@ -20,17 +16,6 @@ const _isTimestampValid = (clientTime: number): boolean => {
   return true;
 };
 
-// const _isValidSignedHeaders = (headers: Headers): boolean => {
-//   const [signerId, clientTime, requestId, contentSha256, signatureHeader] = _getPredefinedHeaderValues(headers);
-//   if (!signerId || clientTime === 0 || !requestId || !contentSha256 || !signatureHeader) {
-//     throw new Error('Missing required signed headers');
-//   }
-//   const isValidTimestamp = _isTimestampValid(clientTime);
-//   if (!isValidTimestamp) {
-//     throw new Error('Invalid timestamp');
-//   }
-//   return true;
-// };
 const _validateFields = (body: any, requiredFields: readonly string[]): boolean => {
   for (const field of requiredFields) {
     if (!(field in body)) {
@@ -46,8 +31,9 @@ const _isValidVault = (body: Vault): boolean => {
     _validateFields(body, C.vaultManifestBody.requiredFields) &&
     _validateFields(body.payload, C.vaultManifestPayload.requiredFields) &&
     _validateAccountId(body.payload.id) &&
-    _validateVaultName(body.payload.name) &&
-    body.payload.type === VAULT_TYPE.personal &&
+    (body.payload.type === VAULT_TYPE.personal
+      ? _validateAccountName(body.payload.name)
+      : _validateVaultName(body.payload.name)) &&
     _validateVaultMemberSlots(body.payload.memberSlots)
   ) {
     return true;
@@ -63,20 +49,7 @@ const _isMatchingManagerSigner = (body: Vault): boolean => {
   return member.memberRole === ROLE.OWNER || member.memberRole === ROLE.ADMIN;
 };
 
-// const _getPredefinedHeaderValues = (headers: Headers): [string, number, string, string, string] => {
-//   return [
-//     headers.get('X-Signer-ID') || '',
-//     parseInt(headers.get('X-Timestamp') || '0', 10),
-//     headers.get('X-Request-ID') || '',
-//     headers.get('Content-SHA256') || '',
-//     headers.get('X-Signature') || '',
-//   ];
-// };
-
 const _isValidSignature = (messageString: string, signatureString: string, member: MemberSlot): boolean => {
-  // const signerId = body.signerId;
-  // const payloadHash = body.payloadHash;
-  // const signature = body.signature;
   if ([messageString, signatureString].some(v => !v?.trim()) || !member) {
     throw new Error('Missing or malformed signature components');
   }
@@ -109,7 +82,7 @@ const _isAccountNameReserved = (accountName: string): boolean => {
   return false;
 };
 
-export const validateAccountName = (accountName: string): boolean => {
+const _validateAccountName = (accountName: string): boolean => {
   if (typeof accountName !== 'string') return false;
   if (_isAccountNameReserved(accountName)) return false;
   const rules = C.accountName;
@@ -124,12 +97,6 @@ export const _validateVaultName = (vaultName: string): boolean => {
   const rules = C.vaultName;
   return trimmed.length >= rules.minLength && trimmed.length <= rules.maxLength && rules.pattern.test(trimmed);
 };
-
-// export const validateEmail = (email: string): boolean => {
-//   if (typeof email !== 'string') return false;
-//   const rules = C.email;
-//   return email.length >= rules.minLength && email.length <= rules.maxLength && rules.pattern.test(email);
-// };
 
 const _validateAccountId = (accountId: string): boolean => {
   return typeof accountId === 'string' && C.accountId.pattern.test(accountId);
@@ -168,11 +135,11 @@ const _isValidLoginPayload = (body: LoginRequest): boolean => {
       return false;
     }
   }
-  if (!_validateVaultName(body.payload.accountName)) return false;
+  if (!_validateAccountName(body.payload.accountName)) return false;
   return true;
 };
 export const validateRegistrationRequest = async (body: Vault): Promise<boolean> => {
-  return isValidVaultManifest(body);
+  return isValidVaultManifest(body, VAULT_TYPE.personal);
 };
 
 export const validateLoginRequest = async (body: LoginRequest, vaultManifest: Vault): Promise<boolean> => {
@@ -188,8 +155,12 @@ export const validateLoginRequest = async (body: LoginRequest, vaultManifest: Va
   return false;
 };
 
-export const isValidVaultManifest = async (vaultManifest: Vault): Promise<boolean> => {
-  if (_isValidVault(vaultManifest) && _isMatchingManagerSigner(vaultManifest)) {
+export const isValidVaultManifest = async (vaultManifest: Vault, expectedType: VaultType): Promise<boolean> => {
+  if (
+    _isValidVault(vaultManifest) &&
+    _isMatchingManagerSigner(vaultManifest) &&
+    vaultManifest.payload.type === expectedType
+  ) {
     const calculatedSha256 = await sha256(generateCanonicalJSON(vaultManifest.payload), 'base64');
     const memberSlot = getMemberFromMemberSlots(vaultManifest.payload.memberSlots, vaultManifest.signerId);
     if (memberSlot) {
