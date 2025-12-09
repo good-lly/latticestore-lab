@@ -8,22 +8,22 @@ const _redisManifestKey = (vaultId: string) => `${vaultId}::manifest`;
 const _redisNameMappingKey = (vaultName: string) => `${NAME_MAPPING}::${vaultName}`;
 
 export class Accounts {
-  private _s3: S3mini;
-  private _vaultRedis: Keyv;
+  readonly #s3: S3mini;
+  readonly #vaultRedis: Keyv;
   constructor(s3: S3mini, vaultRedis: Keyv) {
-    this._s3 = s3;
-    this._vaultRedis = vaultRedis;
+    this.#s3 = s3;
+    this.#vaultRedis = vaultRedis;
   }
 
   public async existingId(vaultId: string): Promise<boolean> {
     const [cached, manifest] = await Promise.all([
-      this._vaultRedis.get(_redisManifestKey(vaultId)),
-      this._s3.getObject(_s3manifestKey(vaultId)),
+      this.#vaultRedis.get(_redisManifestKey(vaultId)),
+      this.#s3.getObject(_s3manifestKey(vaultId)),
     ]);
     const inRedis = cached !== undefined;
     const inS3 = manifest !== null;
     if (inS3 && !inRedis) {
-      this._vaultRedis.set(_redisManifestKey(vaultId), manifest);
+      this.#vaultRedis.set(_redisManifestKey(vaultId), manifest);
     }
     if (inRedis && !inS3) {
       throw new Error(`Inconsistent state: vault ${vaultId} exists in Redis but not in S3 storage! Call the police!`);
@@ -33,8 +33,39 @@ export class Accounts {
   }
 
   public async existingName(vaultName: string): Promise<boolean> {
-    const cached = await this._vaultRedis.get(_redisNameMappingKey(vaultName));
+    const cached = await this.#vaultRedis.get(_redisNameMappingKey(vaultName));
     return cached !== undefined;
+  }
+
+  public async getIdByName(vaultName: string): Promise<string | null> {
+    const cached: string | undefined = await this.#vaultRedis.get(_redisNameMappingKey(vaultName));
+    if (cached !== undefined) {
+      return cached;
+    }
+    return null;
+  }
+
+  public async getPersonalVaultIdByName(vaultName: string): Promise<Vault | null> {
+    const cached: string | undefined = await this.#vaultRedis.get(_redisNameMappingKey(vaultName));
+    console.log('Cached vault ID for name', vaultName, ':', cached);
+    if (cached !== undefined) {
+      const vault = await this.#vaultRedis.get(_redisManifestKey(cached));
+      if (vault && vault.payload.type === 'personal') {
+        return vault;
+      }
+      if (vault === undefined) {
+        // s3 fallback
+        const s3Object = await this.#s3.getObject(_s3manifestKey(cached));
+        if (s3Object) {
+          const vault: Vault = JSON.parse(s3Object);
+          if (vault.payload.type === 'personal') {
+            this.#vaultRedis.set(_redisManifestKey(cached), vault);
+            return vault;
+          }
+        }
+      }
+    }
+    return null;
   }
 
   public async createAccount(body: Vault): Promise<boolean> {
@@ -43,9 +74,9 @@ export class Accounts {
       const redisManifestKey = _redisManifestKey(body.payload.id);
       const redisNameMappingKey = _redisNameMappingKey(body.payload.name);
       const [s3PutResult] = await Promise.all([
-        this._s3.putObject(manifestKey, JSON.stringify(body)),
-        this._vaultRedis.set(redisManifestKey, body),
-        this._vaultRedis.set(redisNameMappingKey, body.payload.id),
+        this.#s3.putObject(manifestKey, JSON.stringify(body)),
+        this.#vaultRedis.set(redisManifestKey, body),
+        this.#vaultRedis.set(redisNameMappingKey, body.payload.id),
       ]);
       console.log(`Account ${body.payload.id} with name ${body.payload.name} created successfully`, s3PutResult);
       return s3PutResult.status === 200;

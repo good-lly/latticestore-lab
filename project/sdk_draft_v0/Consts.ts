@@ -149,8 +149,11 @@ export const RESERVED_USERNAMES = [
   'invoice',
   'receipt',
 ];
-export const TIMESTAMP_TOLERANCE_MS = 5 * 60 * 1000; // 5 minutes
-export const TOKEN_EXPIRATION_SECONDS = 1000 * 60 * 30; // 30 minutes
+
+export const TOKEN_NAMESPACE = 'TKN';
+
+export const TIMESTAMP_TOLERANCE_MS = 1 * 60 * 1000; // 1 minute
+export const TOKEN_EXPIRATION_SECONDS = 1000 * 60 * 1; // 1 minute
 
 export const KEM_KEY_LENGTH_BYTES = 64;
 export const DSA_KEY_LENGTH_BYTES = 32;
@@ -209,10 +212,10 @@ export const VALIDATION_RULES = {
       'updatedAt',
     ],
   },
-  vaultRegistrationBody: {
+  vaultManifestBody: {
     requiredFields: ['payload', 'payloadHash', 'signerId', 'signature'] as const[],
   },
-  vaultRegistrationPayload: {
+  vaultManifestPayload: {
     requiredFields: [
       'version',
       'name',
@@ -228,7 +231,10 @@ export const VALIDATION_RULES = {
       'updatedAt',
     ] as const[],
   },
+  vaultLoginBody: {
+    requiredFields: ['payload', 'payloadHash', 'signerId', 'signature'],
+  },
   vaultLoginPayload: {
-    requiredFields: ['username', 'vaultId'],
+    requiredFields: ['accountName', 'memberId', 'timestamp'],
   },
 } as const;

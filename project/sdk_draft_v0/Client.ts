@@ -2,14 +2,14 @@
 
 import { makeRequest } from './ApiClient';
 
-import { CryptoUtils } from './CryptoUtils';
+import { generateRandomBytes, letscShake256, deriveSeeds, sha256 } from './CryptoUtils';
 import { AEAD, RawAEADKey } from './CryptoAEAD';
 
 import { Members } from './Members';
 import { CUSTOM_MANAGER_KEY_STRING, ROLE, VAULT_TYPE } from './Consts.js';
 import type { VaultId, Base64, Base64Encrypted } from './Consts.js';
 
-// import { Account } from './Account';
+import { Account } from './Account';
 import { toUint8Array, genId, uint8ArrayToBase64, now, generateCanonicalJSON } from './Helpers';
 
 import { DEFAULT_AEAD_KEY_LENGTH_BYTES, DEFAULT_SEED_LENGTH_BYTES, RECOVERY_DEVICE_NAME } from './Consts';
@@ -44,24 +44,23 @@ const _verifySecurityContext = async () => {
 // chunks ->  vaultId -> chunkId  ONLY owner/admin/member can write, read for all members, delete only owner/admin/member
 
 export class LatticeStoreClient {
-  private serviceUrl: string;
+  private _serviceUrl: string;
   constructor(serviceUrl: string) {
     _verifySecurityContext();
-    this.serviceUrl = serviceUrl;
+    this._serviceUrl = serviceUrl;
   }
   public async register(
     accountName: string,
     deviceName: string,
     deviceSeed?: Uint8Array,
-    email?: string,
-    service: string = this.serviceUrl,
+    service: string = this._serviceUrl,
   ) {
     try {
       // this device seed is either provided by user or randomly generated
-      const thisDeviceSeed = deviceSeed ?? CryptoUtils.generateRandomBytes(DEFAULT_SEED_LENGTH_BYTES);
+      const thisDeviceSeed = deviceSeed ?? generateRandomBytes(DEFAULT_SEED_LENGTH_BYTES);
 
       // Generate recovery seeds
-      const recoverySeed = CryptoUtils.generateRandomBytes(DEFAULT_SEED_LENGTH_BYTES);
+      const recoverySeed = generateRandomBytes(DEFAULT_SEED_LENGTH_BYTES);
 
       const masterKey = AEAD.generateRawAEADKeyData();
 
@@ -71,12 +70,12 @@ export class LatticeStoreClient {
       ]);
 
       const accountId = genId() as VaultId;
-      const accountSeed = CryptoUtils.generateRandomBytes(DEFAULT_SEED_LENGTH_BYTES);
-      const { kemSeed, dsaSeed } = CryptoUtils.deriveSeeds(accountSeed);
+      const accountSeed = generateRandomBytes(DEFAULT_SEED_LENGTH_BYTES);
+      const { kemSeed, dsaSeed } = deriveSeeds(accountSeed);
       const accountKemKeys = CryptoPQ.generateKemKeys(kemSeed);
       const accountDsaKeys = CryptoPQ.generateDsaKeys(dsaSeed);
 
-      const managersKey = CryptoUtils.letscShake256(
+      const managersKey = letscShake256(
         masterKey,
         toUint8Array(CUSTOM_MANAGER_KEY_STRING),
         DEFAULT_AEAD_KEY_LENGTH_BYTES,
@@ -108,18 +107,16 @@ export class LatticeStoreClient {
         createdAt: timestamp,
         updatedAt: timestamp,
       };
-      if (email) {
-        registerPayload.email = email.trim();
-      }
       // cleanup here
       kemSeed.fill(0);
       dsaSeed.fill(0);
       managersKey.fill(0);
-      const payloadSha256uint8Array = (await CryptoUtils.sha256(
+      accountKemKeys.secretKey.fill(0);
+      accountDsaKeys.secretKey.fill(0);
+      const payloadSha256uint8Array = (await sha256(
         generateCanonicalJSON(registerPayload),
         'uint8array',
       )) as Uint8Array;
-      console.warn('Payload SHA256 (uint8array):', payloadSha256uint8Array);
       const registerBody = {
         payload: registerPayload,
         payloadHash: uint8ArrayToBase64(payloadSha256uint8Array),
@@ -138,7 +135,19 @@ export class LatticeStoreClient {
         deviceCredentials: thisDeviceCredentials,
         recoveryDeviceCredentials: recoveryDeviceCredentials,
         recoverySeed: recoverySeed,
+        thisDeviceSeed: thisDeviceSeed,
       };
+    } catch (error) {
+      throw error;
+    }
+  }
+
+  public async login(accountName: string, deviceSeed: Uint8Array, service: string = this._serviceUrl) {
+    try {
+      const account = await Account._create(service, accountName, deviceSeed);
+      if (!!account) {
+        return account;
+      }
     } catch (error) {
       throw error;
     }

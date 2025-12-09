@@ -1,28 +1,29 @@
-// import type { AccountData } from './Accounts';
-// import { CryptoPQ } from './CryptoPQ';
-import { CryptoUtils } from './CryptoUtils';
-import type { MemberSecrets, Vault, VaultRegistrationPayload } from './Vault';
+import type { Vault } from './Vault';
 import { fromUint8Array } from './Helpers';
+import { Base64 } from './Consts';
 
 // ===== TYPES =====
 
 export type LoginRequest = {
-  payload: {
-    username: string;
-    vaultId: string;
-  };
+  payload: LoginPayload;
+  payloadHash: Base64<Uint8Array>;
+  signerId: string;
+  signature: Base64<Uint8Array>;
 };
 
-// export type LoginResponse = {
-//   ok: boolean;
-//   accountInfo: AccountData;
-//   deviceEnvelope: ExtendedDeviceEnvelope;
-//   featuresList: string | null;
-//   authToken: string;
-//   message?: string;
-//   code: number;
-//   reqId: string;
-// };
+export type LoginPayload = {
+  accountName: string;
+  memberId: string;
+  timestamp: number;
+};
+
+export type LoginResponse = {
+  ok: boolean;
+  accountVault?: Vault;
+  authToken?: string;
+  message: string;
+  code: number;
+};
 
 export type RegisterResponse = {
   ok: boolean;
@@ -173,18 +174,12 @@ export class ResponseParser {
 /**
  * Prepare headers for bearer token authentication
  */
-const prepareBearerAuth = (
-  token: string,
-  headers: Record<string, string>,
-): { headers: Record<string, string>; requestId: string } => {
-  let reqId = CryptoUtils.generateRandomUUID();
+const prepareBearerAuth = (token: string, headers: Record<string, string>): { headers: Record<string, string> } => {
   return {
     headers: {
       ...headers,
-      'X-Request-ID': reqId,
       Authorization: `Bearer ${token}`,
     },
-    requestId: reqId,
   };
 };
 
@@ -292,27 +287,26 @@ const _fetchRequest = async (url: string, options: RequestOptions = {}): Promise
 /**
  * Make a signed request (for registration/login)
  */
-export const signedRequest = async <T = any>(
-  url: string,
-  payload: VaultRegistrationPayload | LoginRequest,
-  signer: MemberSecrets,
-): Promise<T> => {
-  const parser = await _fetchRequest(url, {
-    method: 'POST',
-    auth: {
-      type: 'signed',
-      signerId: signer.memberId,
-      secretSignKey: signer.dsaSecretKey,
-      payload,
-    },
-  });
-
-  return parser.json<T>();
-};
+// export const signedRequest = async <T = any>(
+//   url: string,
+//   payload: VaultRegistrationPayload | LoginRequest,
+//   signer: MemberSecrets,
+// ): Promise<T> => {
+//   const parser = await _fetchRequest(url, {
+//     method: 'POST',
+//     auth: {
+//       type: 'signed',
+//       signerId: signer.memberId,
+//       secretSignKey: signer.dsaSecretKey,
+//       payload,
+//     },
+//   });
+//   return parser.json<T>();
+// };
 export const makeRequest = async <T = any>(
   url: string,
   method: 'GET' | 'POST' | 'PUT' | 'DELETE',
-  body?: Vault,
+  body?: LoginRequest | Vault,
   headers?: Record<string, string>,
 ): Promise<T> => {
   const parser = await _fetchRequest(url, {

@@ -54,7 +54,6 @@ export type VaultRegistrationPayload = {
   featuresEncrypted?: Base64Encrypted<Feature[]>; // Just pointers to feature channels, not feature state
   createdAt: Timestamp;
   updatedAt: Timestamp;
-  email?: string; // optional, for account recovery and notifications
 };
 
 export type Vault = {

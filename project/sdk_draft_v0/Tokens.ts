@@ -1,44 +1,42 @@
-// import { Keyv } from 'keyv';
-// import { KeyvUpstash } from 'keyv-upstash';
-// import { CryptoUtils } from './CryptoUtils';
-// import { uint8ArrayToHex } from './Helpers';
-// import { RedisConfig } from './Service';
-// import { TOKEN_EXPIRATION_SECONDS, TOKEN_LENGTH_BYTES } from './Consts';
+import { Keyv } from 'keyv';
+import type { KeyvStoreAdapter } from 'keyv';
+import { generateRandomBytes } from './CryptoUtils';
+import { uint8ArrayToHex } from './Helpers';
+import { TOKEN_EXPIRATION_SECONDS, TOKEN_LENGTH_BYTES, TOKEN_NAMESPACE } from './Consts';
 
-// const TOKEN_NAMESPACE = 'TOKENS';
-// export class Tokens {
-//   private _tokenKeyv: Keyv;
+const tokenKeyPrefix = (memberId: string, vaultId: string): string => {
+  return `${memberId}::${vaultId}`;
+};
 
-//   constructor(redisConfig: RedisConfig) {
-//     this._tokenKeyv = new Keyv({
-//       store: new KeyvUpstash({
-//         url: redisConfig.REDIS_URL,
-//         token: redisConfig.REDIS_TOKEN,
-//         enableTelemetry: false,
-//         automaticDeserialization: false,
-//       }),
-//       ttl: TOKEN_EXPIRATION_SECONDS,
-//       namespace: TOKEN_NAMESPACE,
-//     });
-//   }
+export class Tokens {
+  readonly #tokenKeyv: Keyv;
 
-//   public async generateTokenForDevice(deviceId: string): Promise<string> {
-//     await this.revokeToken(deviceId); // Revoke any existing token
-//     const token = uint8ArrayToHex(CryptoUtils.generateRandomBytes(TOKEN_LENGTH_BYTES));
-//     await this._tokenKeyv.set(deviceId, token, TOKEN_EXPIRATION_SECONDS);
-//     return token;
-//   }
+  constructor(keyvAdapter: KeyvStoreAdapter) {
+    this.#tokenKeyv = new Keyv({
+      store: keyvAdapter,
+      useKeyPrefix: false,
+      namespace: TOKEN_NAMESPACE,
+      ttl: TOKEN_EXPIRATION_SECONDS,
+    });
+  }
 
-//   public async isValidToken(deviceId: string, providedToken: string): Promise<boolean> {
-//     const storedToken = await this._tokenKeyv.get(deviceId);
-//     return storedToken === providedToken;
-//   }
+  public async generateTokenForMemberAndVault(memberId: string, vaultId: string): Promise<string> {
+    await this.revokeToken(memberId, vaultId); // Revoke any existing token
+    const token = uint8ArrayToHex(generateRandomBytes(TOKEN_LENGTH_BYTES));
+    await this.#tokenKeyv.set(tokenKeyPrefix(memberId, vaultId), token);
+    return token;
+  }
 
-//   public async revokeToken(deviceId: string): Promise<boolean> {
-//     return await this._tokenKeyv.delete(deviceId);
-//   }
+  public async isValidToken(memberId: string, vaultId: string, providedToken: string): Promise<boolean> {
+    const storedToken = await this.#tokenKeyv.get(tokenKeyPrefix(memberId, vaultId));
+    return storedToken === providedToken;
+  }
 
-//   public async revokeAllTokens(): Promise<void> {
-//     await this._tokenKeyv.clear();
-//   }
-// }
+  public async revokeToken(memberId: string, vaultId: string): Promise<boolean> {
+    return await this.#tokenKeyv.delete(tokenKeyPrefix(memberId, vaultId));
+  }
+
+  public async revokeAllTokens(): Promise<void> {
+    await this.#tokenKeyv.clear();
+  }
+}

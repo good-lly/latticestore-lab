@@ -1,6 +1,7 @@
 import { ml_kem1024 } from '@noble/post-quantum/ml-kem.js';
 import { ml_dsa87 as ml_dsa } from '@noble/post-quantum/ml-dsa.js';
-import { CryptoUtils } from './CryptoUtils.js';
+import { generateRandomBytes } from './CryptoUtils.js';
+import { toUint8Array } from './Helpers.js';
 
 export type CryptoPQKeyPair = {
   secretKey: Uint8Array;
@@ -34,19 +35,9 @@ export class CryptoPQ {
    * @param {Uint8Array} [seed=CryptoUtils.generateRandomBytes(64)] - Optional seed for key generation. If not provided, a random seed will be generated.
    * @returns {CryptoPQKeyPair} An object containing the secretKey and publicKey as Uint8Arrays.
    */
-  static generateKemKeys = (seed: Uint8Array = CryptoUtils.generateRandomBytes(64)): CryptoPQKeyPair => {
-    if (seed.length !== 64) {
-      throw new CryptoPQError('Seed must be 64 bytes long', 'INVALID_SEED_LENGTH');
-    }
-    try {
-      const { secretKey, publicKey } = ml_kem1024.keygen(seed);
-      return { secretKey, publicKey };
-    } catch (error) {
-      throw new CryptoPQError(
-        `ML-KEM key generation failed: ${error instanceof Error ? error.message : 'unknown error'}`,
-        'KEY_GENERATION_FAILED',
-      );
-    }
+  static generateKemKeys = (seed: Uint8Array = generateRandomBytes(64)): CryptoPQKeyPair => {
+    if (seed.length !== 64) throw new CryptoPQError('Seed must be 64 bytes', 'INVALID_SEED_LENGTH');
+    return ml_kem1024.keygen(seed);
   };
 
   /**
@@ -55,15 +46,7 @@ export class CryptoPQ {
    * @returns {CryptoPQEncapsulated} An object containing the cipherText and sharedSecret as Uint8Arrays.
    */
   static encapsulate(publicKey: Uint8Array): CryptoPQEncapsulated {
-    try {
-      const { cipherText, sharedSecret } = ml_kem1024.encapsulate(publicKey);
-      return { cipherText, sharedSecret };
-    } catch (error) {
-      throw new CryptoPQError(
-        `Encapsulation failed: ${error instanceof Error ? error.message : 'unknown error'}`,
-        'ENCAPSULATION_FAILED',
-      );
-    }
+    return ml_kem1024.encapsulate(publicKey);
   }
 
   /**
@@ -73,15 +56,7 @@ export class CryptoPQ {
    * @returns {Uint8Array} The shared secret as a Uint8Array.
    */
   static decapsulate(ciphertext: Uint8Array, secretKey: Uint8Array): Uint8Array {
-    try {
-      const plaintext = ml_kem1024.decapsulate(ciphertext, secretKey);
-      return plaintext;
-    } catch (error) {
-      throw new CryptoPQError(
-        `Decapsulation failed: ${error instanceof Error ? error.message : 'unknown error'}`,
-        'DECAPSULATION_FAILED',
-      );
-    }
+    return ml_kem1024.decapsulate(ciphertext, secretKey);
   }
 
   /**
@@ -89,16 +64,8 @@ export class CryptoPQ {
    * @param {Uint8Array} [seed=CryptoUtils.generateRandomBytes(32)] - Optional seed for key generation. If not provided, a random seed will be generated.
    * @returns {CryptoPQKeyPair} An object containing the secretKey and publicKey as Uint8Arrays.
    */
-  static generateDsaKeys = (seed: Uint8Array = CryptoUtils.generateRandomBytes(32)): CryptoPQKeyPair => {
-    try {
-      const { secretKey, publicKey } = ml_dsa.keygen(seed);
-      return { secretKey, publicKey };
-    } catch (error) {
-      throw new CryptoPQError(
-        `ML-DSA key generation failed: ${error instanceof Error ? error.message : 'unknown error'}`,
-        'KEY_GENERATION_FAILED',
-      );
-    }
+  static generateDsaKeys = (seed: Uint8Array = generateRandomBytes(32)): CryptoPQKeyPair => {
+    return ml_dsa.keygen(seed);
   };
 
   /**
@@ -108,23 +75,11 @@ export class CryptoPQ {
    * @returns {Uint8Array} The signature as a Uint8Array.
    */
   static sign(secretKey: Uint8Array, message: Uint8Array | string): Uint8Array {
-    try {
-      if (secretKey.length !== ML_DSA_SECRET_KEY_SIZE) {
-        throw new CryptoPQError('Invalid secret key length', 'INVALID_SECRET_KEY_LENGTH');
-      }
-      if (typeof message === 'string') {
-        message = new TextEncoder().encode(message);
-      }
-      if (message.length === 0) {
-        throw new CryptoPQError('Message cannot be empty', 'EMPTY_MESSAGE');
-      }
-      return ml_dsa.sign(message, secretKey);
-    } catch (error) {
-      throw new CryptoPQError(
-        `Signing failed: ${error instanceof Error ? error.message : 'unknown error'}`,
-        'SIGNING_FAILED',
-      );
-    }
+    if (secretKey.length !== ML_DSA_SECRET_KEY_SIZE)
+      throw new CryptoPQError('Invalid secret key length', 'INVALID_SECRET_KEY_LENGTH');
+    const msg = typeof message === 'string' ? toUint8Array(message) : message;
+    if (msg.length === 0) throw new CryptoPQError('Message cannot be empty', 'EMPTY_MESSAGE');
+    return ml_dsa.sign(msg, secretKey);
   }
 
   /**
@@ -135,22 +90,11 @@ export class CryptoPQ {
    * @returns {boolean} True if the signature is valid, false otherwise.
    */
   static verifySignature(publicKey: Uint8Array, message: Uint8Array | string, signature: Uint8Array): boolean {
-    if (signature.length !== ML_DSA_SIGNATURE_SIZE) {
+    if (signature.length !== ML_DSA_SIGNATURE_SIZE)
       throw new CryptoPQError('Invalid signature length', 'INVALID_SIGNATURE_LENGTH');
-    }
-    if (typeof message === 'string') {
-      message = new TextEncoder().encode(message);
-    }
-    if (publicKey.length !== ML_DSA_PUBLIC_KEY_SIZE) {
+    if (publicKey.length !== ML_DSA_PUBLIC_KEY_SIZE)
       throw new CryptoPQError('Invalid public key length', 'INVALID_PUBLIC_KEY_LENGTH');
-    }
-    try {
-      return ml_dsa.verify(signature, message, publicKey);
-    } catch (error) {
-      throw new CryptoPQError(
-        `Signature verification failed: ${error instanceof Error ? error.message : 'unknown error'}`,
-        'SIGNATURE_VERIFICATION_FAILED',
-      );
-    }
+    const msg = typeof message === 'string' ? toUint8Array(message) : message;
+    return ml_dsa.verify(signature, msg, publicKey);
   }
 }

@@ -61,13 +61,13 @@ api.get('clearall', async c => {
 // TBD rework
 api.post('login', async c => {
   const body = await c.req.json();
-  const headers = c.req.raw.headers;
+  // const headers = c.req.raw.headers;
   const ls = c.get('lattice');
   if (!ls) {
     return c.json({ ok: false, message: 'Service not initialized' }, 500);
   }
-  const loginResponse = await ls.login(headers, body);
-  c.header('x-request-id', headers.get('x-request-id'));
+  const loginResponse = await ls.login(body);
+  // c.header('x-request-id', headers.get('x-request-id'));
   return c.json(loginResponse);
 });
 

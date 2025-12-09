@@ -1,11 +1,10 @@
 import { CryptoPQ } from './CryptoPQ';
-import { CryptoUtils } from './CryptoUtils';
+import { deriveSeeds, deriveKeyForRole, getMemberIdFromPubkey } from './CryptoUtils';
 import { AEAD, RawAEADKey } from './CryptoAEAD';
-import { uint8ArrayToBase64, now } from './Helpers';
-
+import { uint8ArrayToBase64, now, toUint8Array } from './Helpers';
 import { MEMBER_STATUS } from './Consts.js';
-import type { MemberRole, MemberId, Base64, Base64Encrypted, Timestamp } from './Consts.js';
 
+import type { MemberRole, MemberId, Base64, Base64Encrypted, Timestamp } from './Consts.js';
 import type { MemberSlot, MemberEncryptedDetail, MemberSecrets } from './Vault.js';
 
 export type MemberCredentials = {
@@ -22,7 +21,7 @@ export class Members {
     initSeed: Uint8Array,
   ): Promise<MemberCredentials> {
     // Implementation goes here
-    const { kemSeed, dsaSeed } = CryptoUtils.deriveSeeds(initSeed);
+    const { kemSeed, dsaSeed } = deriveSeeds(initSeed);
 
     const kemKeys = CryptoPQ.generateKemKeys(kemSeed);
     const { cipherText, sharedSecret } = CryptoPQ.encapsulate(kemKeys.publicKey);
@@ -31,12 +30,12 @@ export class Members {
 
     const encryptedMasterKey = await AEAD.encrypt(
       aeadSharedKey,
-      CryptoUtils.deriveKeyForRole(role, rootKey) as Uint8Array<ArrayBuffer>,
+      deriveKeyForRole(role, rootKey) as Uint8Array<ArrayBuffer>,
     );
 
     const dsaKeys = CryptoPQ.generateDsaKeys(dsaSeed);
 
-    const memberId = CryptoUtils.computeMemberId(dsaKeys.publicKey) as MemberId;
+    const memberId = getMemberIdFromPubkey(dsaKeys.publicKey) as MemberId;
     const timestamp = now() as Timestamp;
 
     // we return object with two parts: private (MemberEncryptedDetail) and public (MemberSlot) + credentials
@@ -70,8 +69,8 @@ export class Members {
     memberDetails: MemberEncryptedDetail[],
     aeadKey: CryptoKey,
   ): Promise<Base64Encrypted<MemberEncryptedDetail[]>> {
-    const serialized = new TextEncoder().encode(JSON.stringify(memberDetails));
-    const encrypted = await AEAD.encrypt(aeadKey, serialized);
+    const serialized = toUint8Array(JSON.stringify(memberDetails));
+    const encrypted = await AEAD.encrypt(aeadKey, serialized as Uint8Array<ArrayBuffer>);
     return uint8ArrayToBase64(encrypted) as Base64Encrypted<MemberEncryptedDetail[]>;
   }
 }
