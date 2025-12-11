@@ -4,7 +4,7 @@ import { makeRequest } from './ApiClient';
 import { generateRandomBytes, letscShake256, deriveSeeds, sha256 } from './CryptoUtils';
 import { AEAD } from './CryptoAEAD';
 import { CryptoPQ } from './CryptoPQ';
-import { Members } from './Members';
+import { createNewCredentials, encryptMemberList } from './Members';
 import { CUSTOM_MANAGER_KEY_STRING, ROLE, VAULT_TYPE } from './Consts.js';
 import { createAccount } from './Account';
 import { toUint8Array, genId, uint8ArrayToBase64, now, generateCanonicalJSON } from './Helpers';
@@ -63,8 +63,8 @@ export class LatticeStoreClient {
       const masterKey = AEAD.generateRawAEADKeyData();
 
       const [thisDeviceCredentials, recoveryDeviceCredentials] = await Promise.all([
-        Members.createNewCredentials(deviceName.trim(), ROLE.ADMIN, masterKey, thisDeviceSeed),
-        Members.createNewCredentials(RECOVERY_DEVICE_NAME, ROLE.OWNER, masterKey, recoverySeed),
+        createNewCredentials(deviceName.trim(), ROLE.ADMIN, masterKey, thisDeviceSeed),
+        createNewCredentials(RECOVERY_DEVICE_NAME, ROLE.OWNER, masterKey, recoverySeed),
       ]);
 
       const accountId = genId() as VaultId;
@@ -85,7 +85,7 @@ export class LatticeStoreClient {
       const encryptedAccountSeed = uint8ArrayToBase64(
         await AEAD.encrypt(aeadManagersKey, accountSeed as Uint8Array<ArrayBuffer>),
       ) as Base64Encrypted<Uint8Array>;
-      const encryptedMemberList = await Members.encryptMemberList(
+      const encryptedMemberList = await encryptMemberList(
         [thisDeviceCredentials.memberEncryptedDetail, recoveryDeviceCredentials.memberEncryptedDetail],
         aeadManagersKey,
       );

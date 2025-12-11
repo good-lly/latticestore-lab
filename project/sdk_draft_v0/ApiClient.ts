@@ -21,6 +21,7 @@ export type LoginPayload = {
 export type LoginResponse = {
   ok: boolean;
   accountVault?: Vault;
+  vaultEtag?: string;
   authToken?: string;
   message: string;
   code: number;

@@ -1,4 +1,4 @@
-import { S3mini } from 's3mini';
+import { S3mini, sanitizeETag } from 's3mini';
 import { Keyv } from '@keyv/redis';
 import { NAME_MAPPING } from './Consts';
 
@@ -6,6 +6,7 @@ import type { Vault } from './Vault';
 
 const _s3manifestKey = (vaultId: string) => `${vaultId}/${vaultId}-manifest.json`;
 const _redisManifestKey = (vaultId: string) => `${vaultId}::manifest`;
+const _redisManifestEtagKey = (vaultId: string) => `${vaultId}::manifest::etag`;
 const _redisNameMappingKey = (vaultName: string) => `${NAME_MAPPING}::${vaultName}`;
 
 export class Accounts {
@@ -46,26 +47,33 @@ export class Accounts {
     return null;
   }
 
-  public async getPersonalVaultIdByName(vaultName: string): Promise<Vault | null> {
-    const cached: string | undefined = await this.#vaultRedis.get(_redisNameMappingKey(vaultName));
+  public async getPersonalVaultIdByName(vaultName: string): Promise<[Vault | null, string | null]> {
+    const cached = await this.#vaultRedis.get(_redisNameMappingKey(vaultName));
     if (cached !== undefined) {
-      const vault = await this.#vaultRedis.get(_redisManifestKey(cached));
-      if (vault && vault.payload.type === 'personal') {
-        return vault;
-      }
-      if (vault === undefined) {
+      const [vault, etag] = await Promise.all([
+        this.#vaultRedis.get(_redisManifestKey(cached)),
+        this.#vaultRedis.get(_redisManifestEtagKey(cached)),
+      ]);
+      if (vault && vault.payload.type === 'personal' && etag) {
+        return [vault, etag];
+      } else {
         // s3 fallback
-        const s3Object = await this.#s3.getObject(_s3manifestKey(cached));
+        const s3Object = await this.#s3.getObjectResponse(_s3manifestKey(cached));
         if (s3Object) {
-          const vault: Vault = JSON.parse(s3Object);
-          if (vault.payload.type === 'personal') {
-            this.#vaultRedis.set(_redisManifestKey(cached), vault);
-            return vault;
+          const etag = sanitizeETag(s3Object.headers.get('etag') as string);
+          const s3vault: Vault = await s3Object.json();
+          if (s3vault.payload.type === 'personal') {
+            await Promise.all([
+              this.#vaultRedis.set(_redisManifestKey(cached), s3vault),
+              this.#vaultRedis.set(_redisManifestEtagKey(cached), etag),
+              this.#vaultRedis.set(_redisNameMappingKey(vaultName), cached),
+            ]);
+            return [s3vault, etag];
           }
         }
       }
     }
-    return null;
+    return [null, null];
   }
 
   public async createAccount(body: Vault): Promise<boolean> {

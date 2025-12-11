@@ -59,8 +59,8 @@ export class LatticeStoreService {
 
   public async login(body: LoginRequest): Promise<LoginResponse> {
     try {
-      const vaultManifest = await this.#accounts.getPersonalVaultIdByName(body.payload.accountName);
-      if (!vaultManifest) {
+      const [vaultManifest, etag] = await this.#accounts.getPersonalVaultIdByName(body.payload.accountName);
+      if (!vaultManifest || !etag) {
         throw new Error('Account does not exist! You are reported!');
       }
 
@@ -72,6 +72,7 @@ export class LatticeStoreService {
       return {
         ok: true,
         accountVault: vaultManifest,
+        vaultEtag: etag,
         authToken: token,
         message: 'Login successful',
         code: 200,

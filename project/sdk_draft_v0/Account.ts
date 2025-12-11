@@ -32,12 +32,12 @@ export interface MemberInfo {
 export const createAccount = async (
   serviceUrl: string,
   accountName: string,
-  deviceSeed: Uint8Array,
+  memberSeed: Uint8Array,
 ): Promise<Account | null> => {
   // this._serviceUrl = serviceUrl;
   // this._accountName = accountName;
   // this._deviceSeed = deviceSeed;
-  const { dsaSeed } = deriveSeeds(deviceSeed);
+  const { dsaSeed } = deriveSeeds(memberSeed);
   const dsaKeys = CryptoPQ.generateDsaKeys(dsaSeed);
   const loginPayload = {
     accountName: accountName.trim(),
@@ -61,8 +61,7 @@ export const createAccount = async (
     throw new Error('Invalid vault manifest received from server');
   }
   const memberSlot = getMemberFromMemberSlots(vaultManifest.payload.memberSlots, loginPayload.memberId);
-  )
-  
+  return null;
 };
 
 export class Account extends EventTarget {

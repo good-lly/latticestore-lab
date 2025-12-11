@@ -61,3 +61,30 @@ export type Vault = {
   signerId: MemberId;
   signature: Base64<Uint8Array>;
 };
+
+export class VaultController {
+  #vaultManifest: Vault;
+  constructor(public vault: Vault, memberSeed: Uint8Array) {
+    this.#vaultManifest = vault;
+  }
+
+  get id(): VaultId {
+    return this.#vaultManifest.payload.id;
+  }
+
+  get name(): string {
+    return this.#vaultManifest.payload.name;
+  }
+
+  get type(): VaultType {
+    return this.#vaultManifest.payload.type;
+  }
+
+  get memberSlots(): MemberSlot[] {
+    return this.#vaultManifest.payload.memberSlots;
+  }
+
+  get keyEpoch(): number {
+    return this.#vaultManifest.payload.keyEpoch;
+  }
+}
