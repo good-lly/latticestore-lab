@@ -4,6 +4,21 @@ import type { Base64 } from './Consts';
 import type { Vault } from './Vault';
 
 // ===== TYPES =====
+export type checkListItem = {
+  id: string;
+  etag: string;
+};
+
+export type CheckRequest = {
+  checklist: checkListItem[];
+};
+
+export type CheckResponse = {
+  ok: boolean;
+  changed: Array<string>;
+  message: string;
+  code: number;
+};
 
 export type LoginRequest = {
   payload: LoginPayload;
@@ -308,7 +323,7 @@ const _fetchRequest = async (url: string, options: RequestOptions = {}): Promise
 export const makeRequest = async <T = any>(
   url: string,
   method: 'GET' | 'POST' | 'PUT' | 'DELETE',
-  body?: LoginRequest | Vault,
+  body?: LoginRequest | Vault | CheckRequest,
   headers?: Record<string, string>,
 ): Promise<T> => {
   const parser = await _fetchRequest(url, {

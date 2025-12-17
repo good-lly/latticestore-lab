@@ -18,6 +18,11 @@
       "import": "./dist/sdk/Service.js",
       "default": "./dist/sdk/Service.js"
     },
+    "./webworker": {
+      "types": "./dist/sdk/WebGrunt.d.ts",
+      "import": "./dist/sdk/WebGrunt.js",
+      "default": "./dist/sdk/WebGrunt.js"
+    },
     "./package.json": "./package.json"
   },
   "scripts": {
@@ -32,20 +37,20 @@
   "author": "",
   "description": "",
   "devDependencies": {
-    "@alpinejs/focus": "3.15.2",
-    "@alpinejs/persist": "3.15.2",
-    "@tailwindcss/vite": "4.1.17",
-    "@types/node": "25.0.0",
-    "alpinejs": "3.15.2",
+    "@alpinejs/focus": "3.15.3",
+    "@alpinejs/persist": "3.15.3",
+    "@tailwindcss/vite": "4.1.18",
+    "@types/node": "25.0.3",
+    "alpinejs": "3.15.3",
     "concurrently": "^9.2.1",
-    "daisyui": "5.5.8",
-    "hono": "4.10.7",
+    "daisyui": "5.5.14",
+    "hono": "4.11.1",
     "rimraf": "6.1.2",
-    "tailwindcss": "4.1.17",
+    "tailwindcss": "4.1.18",
     "typescript": "5.9.3",
-    "vite": "7.2.6",
-    "vitest": "4.0.15",
-    "wrangler": "4.52.1"
+    "vite": "7.3.0",
+    "vitest": "4.0.16",
+    "wrangler": "4.55.0"
   },
   "prettier": {
     "bracketSpacing": true,
@@ -59,9 +64,9 @@
     "printWidth": 120
   },
   "dependencies": {
-    "@keyv/redis": "5.1.4",
     "@noble/hashes": "^2.0.1",
     "@noble/post-quantum": "^0.5.2",
+    "keyv": "^5.5.5",
     "keyv-upstash": "1.0.8",
     "s3mini": "0.8.0"
   }

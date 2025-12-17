@@ -4,11 +4,11 @@ import { Accounts } from './Accounts';
 import { Admin } from './admin/Admin';
 import { Tokens } from './Tokens';
 import { VAULTS_NAMESPACE } from './Consts';
-import { Keyv } from 'keyv';
+import Keyv from 'keyv';
 
 import type { S3Config } from 's3mini';
 import type { KeyvStoreAdapter } from 'keyv';
-import type { RegisterResponse, LoginRequest, LoginResponse } from './ApiClient';
+import type { RegisterResponse, LoginRequest, LoginResponse, CheckRequest, CheckResponse } from './ApiClient';
 import type { Vault } from './Vault';
 
 export class LatticeStoreService {
@@ -17,17 +17,17 @@ export class LatticeStoreService {
   readonly #accounts: Accounts;
   readonly #tokens: Tokens;
 
-  constructor(S3config: S3Config, keyvAdapter: KeyvStoreAdapter) {
+  constructor(S3config: S3Config, adapterFactory: () => KeyvStoreAdapter) {
     this.#s3 = new S3mini(S3config);
     this.#vaultRedis = new Keyv({
-      store: keyvAdapter,
+      store: adapterFactory(),
       useKeyPrefix: false,
       namespace: VAULTS_NAMESPACE,
       serialize: JSON.stringify,
       deserialize: JSON.parse,
     });
     this.#accounts = new Accounts(this.#s3, this.#vaultRedis);
-    this.#tokens = new Tokens(keyvAdapter);
+    this.#tokens = new Tokens(adapterFactory());
   }
 
   public async register(body: Vault): Promise<RegisterResponse> {
@@ -82,6 +82,35 @@ export class LatticeStoreService {
         ok: false,
         message: `Login request failed: ${(error as Error).message}`,
         code: 400,
+      };
+    }
+  }
+
+  public async checkUpdates(headers: Headers, body: CheckRequest): Promise<CheckResponse> {
+    try {
+      const authTokenBearer = headers.get('Authorization') || '';
+      const providedAuthToken = authTokenBearer.split(' ')[1];
+      const memberId = headers.get('x-member-id');
+      const vaultId = headers.get('x-vault-id');
+      if (!memberId || !vaultId || !providedAuthToken) {
+        throw new Error('Missing authentication headers');
+      }
+      const isValidToken = await this.#tokens.isValidToken(memberId, vaultId, providedAuthToken);
+      if (!isValidToken) {
+        throw new Error('Invalid or expired auth token');
+      }
+      return {
+        ok: true,
+        changed: await this.#accounts.getChanges(vaultId, body.checklist),
+        message: 'Check completed successfully',
+        code: 200,
+      };
+    } catch (error) {
+      return {
+        ok: false,
+        message: `Check request failed: ${(error as Error).message}`,
+        code: 400,
+        changed: [],
       };
     }
   }

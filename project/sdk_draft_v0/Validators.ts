@@ -4,7 +4,8 @@ import { base64ToUint8Array, generateCanonicalJSON, now } from './Helpers';
 import { VALIDATION_RULES as C, RESERVED_USERNAMES, ROLE, VAULT_TYPE, TIMESTAMP_TOLERANCE_MS } from './Consts';
 
 import type { LoginRequest } from './ApiClient';
-import type { MemberSlot, Vault } from './Vault.js';
+import type { MemberSlot } from './Members.js';
+import type { Vault } from './Vault.js';
 import type { VaultType } from './Consts.js';
 
 const _isTimestampValid = (clientTime: number): boolean => {

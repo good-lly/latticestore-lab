@@ -14,7 +14,6 @@ export default defineConfig({
       external: [
         // External server-only dependencies
         'keyv-upstash',
-        '@keyv/redis',
         '@keyv/serialize',
         's3mini',
       ],

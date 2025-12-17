@@ -23,6 +23,13 @@ api.use('*', async (c, next) => {
 
   const bytesLimit = USER_STORAGE_QUOTA ? parseInt(USER_STORAGE_QUOTA) : IO_GB;
   c.set('bytesLimit', bytesLimit);
+  const createAdapter = () =>
+    new KeyvUpstash({
+      url: REDIS_URL,
+      token: REDIS_TOKEN,
+      enableTelemetry: false,
+      automaticDeserialization: false,
+    });
   const ls = new LatticeStoreService(
     {
       accessKeyId: S3_ACCESS_KEY_ID,
@@ -30,12 +37,7 @@ api.use('*', async (c, next) => {
       endpoint: S3_ENDPOINT,
       region: S3_REGION,
     },
-    new KeyvUpstash({
-      url: REDIS_URL,
-      token: REDIS_TOKEN,
-      enableTelemetry: false,
-      automaticDeserialization: false,
-    }),
+    createAdapter,
   );
   c.set('lattice', ls);
   await next();
@@ -84,352 +86,325 @@ api.post('register', async c => {
   console.log('Registration response: ', regResponse);
   // c.header('x-request-id', headers.get('x-request-id'));
   return c.json(regResponse);
-  // const users = c.get('users');
-
-  // const userExists = await users.get(`user:${body.userId}`);
-  // console.log('userExists is: ', userExists);
-  // if (typeof userExists !== 'undefined') {
-  //   return c.json({ ok: false, message: 'User already exists' }, 409);
-  // }
-  // // TBD enable this!
-  // // if (!emailIsValid(email)) {
-  // //   return c.json({ ok: false, message: 'Invalid email vole' }, 400);
-  // // }
-  // if (email !== 'peter' && email !== 'locus') {
-  //   return c.json({ ok: false, message: 'Invalid email' }, 400);
-  // }
-  // if (userPasswordHash.length !== 64) {
-  //   return c.json({ ok: false, message: 'Invalid password hash length' }, 400);
-  // }
-  // const uint8Array = Uint8Array.from(atob(initData), c => c.charCodeAt(0));
-  // const bytesUsed = uint8Array.length;
-  // const bytesLimit = c.get('bytesLimit');
-  // const percentageUsed = (bytesUsed / bytesLimit) * 100;
-
-  // await users.set(`user:${userId}`, {
-  //   userId,
-  //   userPasswordHash,
-  //   devices: [deviceName],
-  //   email,
-  //   bytesUsed,
-  //   bytesLimit,
-  //   percentageUsed,
-  //   limited: false,
-  //   remainingBytes: Math.max(0, bytesLimit - bytesUsed),
-  // });
-
-  // const s3response = await s3client.putObject(`${userId}/user:${userId}.rf`, Buffer.from(uint8Array));
-  // if (!s3response.ok) {
-  //   return c.json({ ok: false, message: 'Error creating initial root file in S3' }, 500);
-  // }
-  return c.json({ ok: true, message: 'Registration successful' });
 });
 
-api.post('logout', async c => {
-  const { userId } = await c.req.json();
-  const tokens = c.get('tokens');
-
-  if (!tokens) {
-    return c.json({ ok: false, message: 'Keyv not initialized' }, 500);
+api.post('check-updates', async c => {
+  const body = await c.req.json();
+  const headers = c.req.raw.headers;
+  const ls = c.get('lattice');
+  if (!ls) {
+    return c.json({ ok: false, message: 'Service not initialized' }, 500);
   }
-
-  await tokens.delete(`user:${userId}`);
-
-  return c.json({ ok: true, message: 'Logout successful' });
+  const regResponse = await ls.checkUpdates(headers, body);
+  console.log('Check response: ', regResponse);
+  return c.json(regResponse);
 });
 
-api.post('upload', async c => {
-  const authTokenBearer = c.req.header('Authorization');
-  const providedAuthToken = authTokenBearer.split(' ')[1];
-  const userId = c.req.header('x-user-id');
-  if (!userId || !providedAuthToken) {
-    return c.json({ ok: false, message: 'Missing user userId or auth token' }, 400);
-  }
-  const tokens = c.get('tokens');
-  const users = c.get('users');
-  const chunks = c.get('chunks');
-  const s3client = c.get('s3');
+// api.post('logout', async c => {
+//   const { userId } = await c.req.json();
+//   const tokens = c.get('tokens');
 
-  if (!tokens || !users || !chunks || !s3client) {
-    return c.json({ ok: false, message: 'Keyvs or S3 client not initialized' }, 500);
-  }
-  // Verify auth token
-  const [existingUserToken, user] = await Promise.all([tokens.get(`user:${userId}`), users.get(`user:${userId}`)]);
-  if (!existingUserToken || existingUserToken !== providedAuthToken) {
-    return c.json({ ok: false, message: 'Invalid user ID or auth token' }, 401);
-  }
-  if (!user) {
-    return c.json({ ok: false, message: 'User not found' }, 404);
-  }
+//   if (!tokens) {
+//     return c.json({ ok: false, message: 'Keyv not initialized' }, 500);
+//   }
 
-  // Check if user is limited
-  if (user.limited) {
-    return c.json(
-      {
-        ok: false,
-        message: 'User storage limit exceeded. Cannot upload.',
-        bytesUsed: user.bytesUsed,
-        bytesLimit: user.bytesLimit,
-        percentageUsed: user.percentageUsed,
-        remainingBytes: user.remainingBytes,
-        limited: true,
-      },
-      403,
-    );
-  }
-  const body = await c.req.arrayBuffer();
-  const size = body.byteLength;
-  const contentDisposition = c.req.header('Content-Disposition');
-  const fileName = contentDisposition ? contentDisposition.split('filename=')[1].replace(/"/g, '') : 'unknown';
-  const lastEtag = c.req.header('If-Match') || null;
-  if (fileName === 'unknown') {
-    return c.json({ ok: false, message: 'Missing filename in Content-Disposition header' }, 400);
-  }
-  const fullName = `${userId}/${fileName}`;
-  console.log('Full file name to upload:', fullName);
-  console.log('File size:', size);
-  console.log('Provided ETag for concurrency control:', lastEtag);
-  if (lastEtag !== null) {
-    try {
-      const currentEtag = await s3client.getEtag(fullName);
-      if (lastEtag !== currentEtag) {
-        return c.json(
-          {
-            ok: false,
-            message: 'ETag mismatch. File has been modified meanwhile.',
-            dataEtag: currentEtag,
-          },
-          409,
-        );
-      }
-      // If ETag matches, proceed with upload
-      const s3response = await s3client.putObject(fullName, Buffer.from(body));
-      if (!s3response.ok) {
-        return c.json({ ok: false, message: 'Error uploading file to S3' }, 500);
-      }
-      const newEtag = sanitizeETag(s3response.headers.get('etag'));
-      // Update user's bytesUsed and percentageUsed
-      let newBytesUsed = user.bytesUsed + size;
-      let limited = false;
-      if (newBytesUsed > user.bytesLimit) {
-        newBytesUsed = user.bytesLimit;
-        limited = true;
-      }
-      const newPercentageUsed = (newBytesUsed / user.bytesLimit) * 100;
-      const newRemainingBytes = Math.max(0, user.bytesLimit - newBytesUsed);
-      await users.set(`user:${userId}`, {
-        ...user,
-        bytesUsed: newBytesUsed,
-        percentageUsed: newPercentageUsed,
-        limited,
-        remainingBytes: newRemainingBytes,
-      });
-      console.log('Uploading chunk for user:', userId, 'fileName:', fileName, 'size:', size, 'etag:', newEtag);
-      return c.json(
-        {
-          ok: true,
-          message: 'Chunk uploaded successfully',
-          newEtag: newEtag,
-          bytesUsed: newBytesUsed,
-          bytesLimit: user.bytesLimit,
-          percentageUsed: newPercentageUsed,
-          remainingBytes: newRemainingBytes,
-          limited,
-        },
-        200,
-      );
-    } catch (error) {
-      return c.json({ ok: false, message: 'File not found for the provided ETag' }, 404);
-    }
-  } else {
-    // No ETag provided, proceed with upload without concurrency check
-    const s3response = await s3client.putObject(fullName, Buffer.from(body));
-    if (!s3response.ok) {
-      return c.json({ ok: false, message: 'Error uploading file to S3' }, 500);
-    }
-    const newEtag = sanitizeETag(s3response.headers.get('etag'));
-    // Update user's bytesUsed and percentageUsed
-    let newBytesUsed = user.bytesUsed + size;
-    let limited = false;
-    if (newBytesUsed > user.bytesLimit) {
-      newBytesUsed = user.bytesLimit;
-      limited = true;
-    }
-    const newPercentageUsed = (newBytesUsed / user.bytesLimit) * 100;
-    const newRemainingBytes = Math.max(0, user.bytesLimit - newBytesUsed);
-    await users.set(`user:${userId}`, {
-      ...user,
-      bytesUsed: newBytesUsed,
-      percentageUsed: newPercentageUsed,
-      limited,
-      remainingBytes: newRemainingBytes,
-    });
-    console.log('Uploading chunk for user:', userId, 'fileName:', fileName, 'size:', size, 'etag:', newEtag);
-    return c.json(
-      {
-        ok: true,
-        message: 'Chunk uploaded successfully',
-        newEtag: newEtag,
-        bytesUsed: newBytesUsed,
-        bytesLimit: user.bytesLimit,
-        percentageUsed: newPercentageUsed,
-        remainingBytes: newRemainingBytes,
-        limited,
-      },
-      200,
-    );
-  }
-  // console.log('Uploading chunk for user:', userId, 'fileName:', fileName, 'size:', size, 'etag:', lastEtag);
+//   await tokens.delete(`user:${userId}`);
 
-  // // save data via s3mini the most optimal way as fast as possible ...
-  // return c.json({ ok: true, message: 'Chunk upload endpoint' }, 200);
-});
+//   return c.json({ ok: true, message: 'Logout successful' });
+// });
 
-api.get('download/:fileId', async c => {
-  const authTokenBearer = c.req.header('Authorization');
-  const providedAuthToken = authTokenBearer.split(' ')[1];
-  const userId = c.req.header('x-user-id');
-  const fileId = c.req.param('fileId');
-  if (!userId || !providedAuthToken) {
-    return c.json({ ok: false, message: 'Missing user userId or auth token' }, 400);
-  }
-  const tokens = c.get('tokens');
-  const chunks = c.get('chunks');
-  const s3client = c.get('s3');
+// api.post('upload', async c => {
+//   const authTokenBearer = c.req.header('Authorization');
+//   const providedAuthToken = authTokenBearer.split(' ')[1];
+//   const userId = c.req.header('x-user-id');
+//   if (!userId || !providedAuthToken) {
+//     return c.json({ ok: false, message: 'Missing user userId or auth token' }, 400);
+//   }
+//   const tokens = c.get('tokens');
+//   const users = c.get('users');
+//   const chunks = c.get('chunks');
+//   const s3client = c.get('s3');
 
-  if (!tokens || !chunks || !s3client) {
-    return c.json({ ok: false, message: 'Keyvs or S3 client not initialized' }, 500);
-  }
-  // Verify auth token
-  const existingUserToken = await tokens.get(`user:${userId}`);
-  if (!existingUserToken || existingUserToken !== providedAuthToken) {
-    return c.json({ ok: false, message: 'Invalid user ID or auth token' }, 401);
-  }
-  const fullName = `${userId}/${fileId}`;
-  try {
-    const s3response = await s3client.getObjectResponse(fullName);
-    if (!s3response.ok) {
-      return c.json({ ok: false, message: 'Error fetching file from S3' }, 500);
-    }
-    const responseAB = await s3response.arrayBuffer();
-    if (responseAB.byteLength === 0) {
-      return c.json({ ok: false, message: 'File not found in S3' }, 404);
-    }
-    const etag = sanitizeETag(s3response.headers.get('etag'));
-    return c.body(responseAB, 200, {
-      'Content-Type': 'application/octet-stream',
-      'Content-Disposition': `attachment; filename="${fileId}"`,
-      etag: etag,
-    });
-  } catch (error) {
-    return c.json({ ok: false, message: 'File not found' }, 404);
-  }
-});
+//   if (!tokens || !users || !chunks || !s3client) {
+//     return c.json({ ok: false, message: 'Keyvs or S3 client not initialized' }, 500);
+//   }
+//   // Verify auth token
+//   const [existingUserToken, user] = await Promise.all([tokens.get(`user:${userId}`), users.get(`user:${userId}`)]);
+//   if (!existingUserToken || existingUserToken !== providedAuthToken) {
+//     return c.json({ ok: false, message: 'Invalid user ID or auth token' }, 401);
+//   }
+//   if (!user) {
+//     return c.json({ ok: false, message: 'User not found' }, 404);
+//   }
 
-api.post('sse-updates', async c => {
-  return streamSSE(
-    c,
-    async stream => {
-      const authTokenBearer = c.req.header('Authorization');
-      const userId = c.req.header('x-user-id');
-      const { deviceName, etag } = await c.req.json();
-      const providedAuthToken = authTokenBearer.split(' ')[1];
-      console.log('SSE connection attempt for userId:', userId, 'device:', deviceName, 'etag:', etag);
-      if (!userId || !providedAuthToken || !deviceName) {
-        // return c.json({ ok: false, message: 'Missing user userId or auth token' }, 400);
-        await stream.writeSSE({
-          data: 'Missing user userId or auth token',
-          event: 'error',
-          code: 500,
-        });
-        stream.close();
-        return;
-      }
-      const tokens = c.get('tokens');
-      const users = c.get('users');
-      const chunks = c.get('chunks');
-      const s3client = c.get('s3');
-      if (!tokens || !users || !chunks || !s3client) {
-        await stream.writeSSE({
-          data: 'Keyv/S3 client not initialized',
-          event: 'error',
-          code: 500,
-        });
-        stream.close();
-        return;
-      }
-      // Verify auth token
-      const existingUserToken = await tokens.get(`user:${userId}`);
-      if (!existingUserToken || existingUserToken !== providedAuthToken) {
-        await stream.writeSSE({
-          data: 'Invalid user ID or auth token',
-          event: 'error',
-          code: 401,
-        });
-        stream.close();
-        return;
-      }
+//   // Check if user is limited
+//   if (user.limited) {
+//     return c.json(
+//       {
+//         ok: false,
+//         message: 'User storage limit exceeded. Cannot upload.',
+//         bytesUsed: user.bytesUsed,
+//         bytesLimit: user.bytesLimit,
+//         percentageUsed: user.percentageUsed,
+//         remainingBytes: user.remainingBytes,
+//         limited: true,
+//       },
+//       403,
+//     );
+//   }
+//   const body = await c.req.arrayBuffer();
+//   const size = body.byteLength;
+//   const contentDisposition = c.req.header('Content-Disposition');
+//   const fileName = contentDisposition ? contentDisposition.split('filename=')[1].replace(/"/g, '') : 'unknown';
+//   const lastEtag = c.req.header('If-Match') || null;
+//   if (fileName === 'unknown') {
+//     return c.json({ ok: false, message: 'Missing filename in Content-Disposition header' }, 400);
+//   }
+//   const fullName = `${userId}/${fileName}`;
+//   console.log('Full file name to upload:', fullName);
+//   console.log('File size:', size);
+//   console.log('Provided ETag for concurrency control:', lastEtag);
+//   if (lastEtag !== null) {
+//     try {
+//       const currentEtag = await s3client.getEtag(fullName);
+//       if (lastEtag !== currentEtag) {
+//         return c.json(
+//           {
+//             ok: false,
+//             message: 'ETag mismatch. File has been modified meanwhile.',
+//             dataEtag: currentEtag,
+//           },
+//           409,
+//         );
+//       }
+//       // If ETag matches, proceed with upload
+//       const s3response = await s3client.putObject(fullName, Buffer.from(body));
+//       if (!s3response.ok) {
+//         return c.json({ ok: false, message: 'Error uploading file to S3' }, 500);
+//       }
+//       const newEtag = sanitizeETag(s3response.headers.get('etag'));
+//       // Update user's bytesUsed and percentageUsed
+//       let newBytesUsed = user.bytesUsed + size;
+//       let limited = false;
+//       if (newBytesUsed > user.bytesLimit) {
+//         newBytesUsed = user.bytesLimit;
+//         limited = true;
+//       }
+//       const newPercentageUsed = (newBytesUsed / user.bytesLimit) * 100;
+//       const newRemainingBytes = Math.max(0, user.bytesLimit - newBytesUsed);
+//       await users.set(`user:${userId}`, {
+//         ...user,
+//         bytesUsed: newBytesUsed,
+//         percentageUsed: newPercentageUsed,
+//         limited,
+//         remainingBytes: newRemainingBytes,
+//       });
+//       console.log('Uploading chunk for user:', userId, 'fileName:', fileName, 'size:', size, 'etag:', newEtag);
+//       return c.json(
+//         {
+//           ok: true,
+//           message: 'Chunk uploaded successfully',
+//           newEtag: newEtag,
+//           bytesUsed: newBytesUsed,
+//           bytesLimit: user.bytesLimit,
+//           percentageUsed: newPercentageUsed,
+//           remainingBytes: newRemainingBytes,
+//           limited,
+//         },
+//         200,
+//       );
+//     } catch (error) {
+//       return c.json({ ok: false, message: 'File not found for the provided ETag' }, 404);
+//     }
+//   } else {
+//     // No ETag provided, proceed with upload without concurrency check
+//     const s3response = await s3client.putObject(fullName, Buffer.from(body));
+//     if (!s3response.ok) {
+//       return c.json({ ok: false, message: 'Error uploading file to S3' }, 500);
+//     }
+//     const newEtag = sanitizeETag(s3response.headers.get('etag'));
+//     // Update user's bytesUsed and percentageUsed
+//     let newBytesUsed = user.bytesUsed + size;
+//     let limited = false;
+//     if (newBytesUsed > user.bytesLimit) {
+//       newBytesUsed = user.bytesLimit;
+//       limited = true;
+//     }
+//     const newPercentageUsed = (newBytesUsed / user.bytesLimit) * 100;
+//     const newRemainingBytes = Math.max(0, user.bytesLimit - newBytesUsed);
+//     await users.set(`user:${userId}`, {
+//       ...user,
+//       bytesUsed: newBytesUsed,
+//       percentageUsed: newPercentageUsed,
+//       limited,
+//       remainingBytes: newRemainingBytes,
+//     });
+//     console.log('Uploading chunk for user:', userId, 'fileName:', fileName, 'size:', size, 'etag:', newEtag);
+//     return c.json(
+//       {
+//         ok: true,
+//         message: 'Chunk uploaded successfully',
+//         newEtag: newEtag,
+//         bytesUsed: newBytesUsed,
+//         bytesLimit: user.bytesLimit,
+//         percentageUsed: newPercentageUsed,
+//         remainingBytes: newRemainingBytes,
+//         limited,
+//       },
+//       200,
+//     );
+//   }
+//   // console.log('Uploading chunk for user:', userId, 'fileName:', fileName, 'size:', size, 'etag:', lastEtag);
 
-      console.log('SSE connection established for user:', userId, 'device:', deviceName);
-      // get etag either from cache or from s3 ...
-      const rootfiles = c.get('rootfiles');
-      let userRootFileEtag = await rootfiles.get(`user:${userId}:etag`);
-      if (!userRootFileEtag) {
-        try {
-          const headResp = await s3client.getEtag(`user:${userId}.rf`);
-          userRootFileEtag = sanitizeETag(headResp);
-          await rootfiles.set(`user:${userId}:etag`, userRootFileEtag);
-        } catch (error) {
-          console.error('Error fetching root file ETag from S3:', error);
-          await stream.writeSSE({
-            data: 'Error fetching root file ETag from S3',
-            event: 'error',
-            code: 500,
-          });
-          stream.close();
-          return;
-        }
-      }
-      console.log('Using root file ETag for user:', userId, 'etag:', userRootFileEtag);
-      await stream.writeSSE({ data: userRootFileEtag, event: 'open', code: 200 });
-      rootfiles.hooks.addHandler(KeyvHooks.HOOK_AFTER_SET, async (key, value) => {
-        if (key === `user:${userId}`) {
-          console.log('Detected root file change for user:', userId);
-          // get new etag
-          let newEtag = await rootfiles.get(`user:${userId}:etag`);
-          if (!newEtag) {
-            try {
-              const headResp = await s3client.getEtag(`user:${userId}.rf`);
-              newEtag = sanitizeETag(headResp);
-              await rootfiles.set(`user:${userId}:etag`, newEtag);
-            } catch (error) {
-              console.error('Error fetching updated root file ETag from S3:', error);
-              return;
-            }
-          }
-          if (newEtag !== userRootFileEtag) {
-            userRootFileEtag = newEtag;
-            console.log('Sending updated ETag to client for user:', userId, 'etag:', userRootFileEtag);
-            await stream.writeSSE({ data: userRootFileEtag, event: 'update', code: 200 });
-          }
-        }
-      });
-      while (true) {
-        await stream.sleep(10 * 1000);
-        await stream.writeSSE({ data: 'ping ' + Date.now(), event: 'keepalive', code: 200 });
-      }
-    },
-    (error, stream) => {
-      console.error('SSE stream error:', error);
-      stream.writeSSE({
-        data: 'Stream closed due to error',
-        event: 'error',
-        code: 500,
-      });
-      stream.close();
-    },
-  );
-});
+//   // // save data via s3mini the most optimal way as fast as possible ...
+//   // return c.json({ ok: true, message: 'Chunk upload endpoint' }, 200);
+// });
+
+// api.get('download/:fileId', async c => {
+//   const authTokenBearer = c.req.header('Authorization');
+//   const providedAuthToken = authTokenBearer.split(' ')[1];
+//   const userId = c.req.header('x-user-id');
+//   const fileId = c.req.param('fileId');
+//   if (!userId || !providedAuthToken) {
+//     return c.json({ ok: false, message: 'Missing user userId or auth token' }, 400);
+//   }
+//   const tokens = c.get('tokens');
+//   const chunks = c.get('chunks');
+//   const s3client = c.get('s3');
+
+//   if (!tokens || !chunks || !s3client) {
+//     return c.json({ ok: false, message: 'Keyvs or S3 client not initialized' }, 500);
+//   }
+//   // Verify auth token
+//   const existingUserToken = await tokens.get(`user:${userId}`);
+//   if (!existingUserToken || existingUserToken !== providedAuthToken) {
+//     return c.json({ ok: false, message: 'Invalid user ID or auth token' }, 401);
+//   }
+//   const fullName = `${userId}/${fileId}`;
+//   try {
+//     const s3response = await s3client.getObjectResponse(fullName);
+//     if (!s3response.ok) {
+//       return c.json({ ok: false, message: 'Error fetching file from S3' }, 500);
+//     }
+//     const responseAB = await s3response.arrayBuffer();
+//     if (responseAB.byteLength === 0) {
+//       return c.json({ ok: false, message: 'File not found in S3' }, 404);
+//     }
+//     const etag = sanitizeETag(s3response.headers.get('etag'));
+//     return c.body(responseAB, 200, {
+//       'Content-Type': 'application/octet-stream',
+//       'Content-Disposition': `attachment; filename="${fileId}"`,
+//       etag: etag,
+//     });
+//   } catch (error) {
+//     return c.json({ ok: false, message: 'File not found' }, 404);
+//   }
+// });
+
+// api.post('sse-updates', async c => {
+//   return streamSSE(
+//     c,
+//     async stream => {
+//       const authTokenBearer = c.req.header('Authorization');
+//       const userId = c.req.header('x-user-id');
+//       const { deviceName, etag } = await c.req.json();
+//       const providedAuthToken = authTokenBearer.split(' ')[1];
+//       console.log('SSE connection attempt for userId:', userId, 'device:', deviceName, 'etag:', etag);
+//       if (!userId || !providedAuthToken || !deviceName) {
+//         // return c.json({ ok: false, message: 'Missing user userId or auth token' }, 400);
+//         await stream.writeSSE({
+//           data: 'Missing user userId or auth token',
+//           event: 'error',
+//           code: 500,
+//         });
+//         stream.close();
+//         return;
+//       }
+//       const tokens = c.get('tokens');
+//       const users = c.get('users');
+//       const chunks = c.get('chunks');
+//       const s3client = c.get('s3');
+//       if (!tokens || !users || !chunks || !s3client) {
+//         await stream.writeSSE({
+//           data: 'Keyv/S3 client not initialized',
+//           event: 'error',
+//           code: 500,
+//         });
+//         stream.close();
+//         return;
+//       }
+//       // Verify auth token
+//       const existingUserToken = await tokens.get(`user:${userId}`);
+//       if (!existingUserToken || existingUserToken !== providedAuthToken) {
+//         await stream.writeSSE({
+//           data: 'Invalid user ID or auth token',
+//           event: 'error',
+//           code: 401,
+//         });
+//         stream.close();
+//         return;
+//       }
+
+//       console.log('SSE connection established for user:', userId, 'device:', deviceName);
+//       // get etag either from cache or from s3 ...
+//       const rootfiles = c.get('rootfiles');
+//       let userRootFileEtag = await rootfiles.get(`user:${userId}:etag`);
+//       if (!userRootFileEtag) {
+//         try {
+//           const headResp = await s3client.getEtag(`user:${userId}.rf`);
+//           userRootFileEtag = sanitizeETag(headResp);
+//           await rootfiles.set(`user:${userId}:etag`, userRootFileEtag);
+//         } catch (error) {
+//           console.error('Error fetching root file ETag from S3:', error);
+//           await stream.writeSSE({
+//             data: 'Error fetching root file ETag from S3',
+//             event: 'error',
+//             code: 500,
+//           });
+//           stream.close();
+//           return;
+//         }
+//       }
+//       console.log('Using root file ETag for user:', userId, 'etag:', userRootFileEtag);
+//       await stream.writeSSE({ data: userRootFileEtag, event: 'open', code: 200 });
+//       rootfiles.hooks.addHandler(KeyvHooks.HOOK_AFTER_SET, async (key, value) => {
+//         if (key === `user:${userId}`) {
+//           console.log('Detected root file change for user:', userId);
+//           // get new etag
+//           let newEtag = await rootfiles.get(`user:${userId}:etag`);
+//           if (!newEtag) {
+//             try {
+//               const headResp = await s3client.getEtag(`user:${userId}.rf`);
+//               newEtag = sanitizeETag(headResp);
+//               await rootfiles.set(`user:${userId}:etag`, newEtag);
+//             } catch (error) {
+//               console.error('Error fetching updated root file ETag from S3:', error);
+//               return;
+//             }
+//           }
+//           if (newEtag !== userRootFileEtag) {
+//             userRootFileEtag = newEtag;
+//             console.log('Sending updated ETag to client for user:', userId, 'etag:', userRootFileEtag);
+//             await stream.writeSSE({ data: userRootFileEtag, event: 'update', code: 200 });
+//           }
+//         }
+//       });
+//       while (true) {
+//         await stream.sleep(10 * 1000);
+//         await stream.writeSSE({ data: 'ping ' + Date.now(), event: 'keepalive', code: 200 });
+//       }
+//     },
+//     (error, stream) => {
+//       console.error('SSE stream error:', error);
+//       stream.writeSSE({
+//         data: 'Stream closed due to error',
+//         event: 'error',
+//         code: 500,
+//       });
+//       stream.close();
+//     },
+//   );
+// });
 
 // api.put('update-rootfile', async c => {
 //   const authTokenBearer = c.req.header('Authorization');

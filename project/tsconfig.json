@@ -34,8 +34,8 @@
     "skipLibCheck": true,
 
     // Resolution
-    "resolveJsonModule": true,
+    "resolveJsonModule": true
   },
   "include": ["sdk_draft_v0/**/*"],
-  "exclude": ["node_modules", "dist", "docs", "src_web", "src_server"],
+  "exclude": ["node_modules", "dist", "docs", "src_web", "src_server"]
 }

@@ -1,14 +1,17 @@
 declare const __brand: unique symbol;
 export type MemberRole = 'OWNER' | 'ADMIN' | 'MEMBER' | 'VIEWER' | 'TEMP';
 export type MemberStatus = 'ACTIVE' | 'INVITED' | 'REMOVED';
+export type FeatureType = 'VFS' | 'KEYVALUE' | 'LIST' | 'CRDTLIST';
 export type Brand<T, B> = T & { [__brand]: B };
 export type Base64<T = unknown> = string & { readonly __base64: T };
 export type Base64Encrypted<T = unknown> = string & { readonly __encrypted: T };
 export type Timestamp = Brand<number, 'Timestamp'>;
 export type Hex256 = Brand<string, 'Hex256'>;
+
 // ID types
 export type FileId = Brand<string, 'FileId'>;
 export type AccountId = Brand<string, 'AccountId'>;
+export type FeatureId = Brand<string, 'FeatureId'>;
 export type MemberId = Brand<string, 'MemberId'>;
 export type ChunkId = Brand<string, 'ChunkId'>;
 export type VaultId = Brand<string, 'VaultId'>;
@@ -43,7 +46,7 @@ export const PERMISSIONS: Record<MemberRole, Set<string>> = Object.freeze({
   TEMP: new Set(['read']),
 });
 
-export const IS_MANAGER_KEY = (role: MemberRole): boolean => {
+export const IS_MANAGER_ROLE = (role: MemberRole): boolean => {
   if (!(role in PERMISSIONS)) {
     throw new Error(`Invalid member role: ${role}`);
   }
@@ -152,6 +155,8 @@ export const TOKEN_NAMESPACE = 'TKN';
 export const TIMESTAMP_TOLERANCE_MS = 1 * 60 * 1000; // 1 minute
 export const TOKEN_EXPIRATION_SECONDS = 1000 * 60 * 1; // 1 minute
 
+export const ETAG_TTL_SECONDS = 60 * 5; // 5 minutes
+
 export const KEM_KEY_LENGTH_BYTES = 64;
 export const DSA_KEY_LENGTH_BYTES = 32;
 export const TOKEN_LENGTH_BYTES = 64;
@@ -163,7 +168,7 @@ export const CUSTOM_KEM_STRING = '*incredibly_unique-custom_string_for_KEM&Latti
 export const CUSTOM_DSA_STRING = '*incredibly_unique-custom_string_for_ML-DSA&LatticeStore*';
 
 export const MEMBER_ID_STRING = '*incredibly_unique-custom_string_for_MEMBER_ID&LatticeStore*';
-export const CUSTOM_SUBKEY_ROLE_STRING = '*incredibly_unique-custom_string_for_SUBKEY_ROLE&LatticeStore*';
+// export const CUSTOM_SUBKEY_ROLE_STRING = '*incredibly_unique-custom_string_for_SUBKEY_ROLE&LatticeStore*';
 export const CUSTOM_MANAGER_KEY_STRING = '*incredibly_unique-custom_string_for_MANAGER_KEY&LatticeStore*';
 export const CUSTOM_FEATURES_LIST_STRING = '*incredibly_unique-custom_string_for_FEATURES_LISTcrypt0&LatticeStore*';
 

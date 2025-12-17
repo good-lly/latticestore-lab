@@ -26,7 +26,6 @@
     "printWidth": 120
   },
   "dependencies": {
-    "@keyv/redis": "^5.1.1",
     "json-joy": "^17.49.1",
     "jsoneditor": "^10.4.1",
     "keyv-upstash": "^1.0.8",

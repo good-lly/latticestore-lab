@@ -1,8 +1,9 @@
-import { S3mini, sanitizeETag } from 's3mini';
-import { Keyv } from '@keyv/redis';
-import { NAME_MAPPING } from './Consts';
+import { S3mini, sanitizeETag, runInBatches } from 's3mini';
+import { Keyv } from 'keyv';
+import { NAME_MAPPING, ETAG_TTL_SECONDS } from './Consts';
 
 import type { Vault } from './Vault';
+import { checkListItem } from './ApiClient';
 
 const _s3manifestKey = (vaultId: string) => `${vaultId}/${vaultId}-manifest.json`;
 const _redisManifestKey = (vaultId: string) => `${vaultId}::manifest`;
@@ -91,6 +92,28 @@ export class Accounts {
     } catch (error) {
       throw new Error(`Failed to create account ${body.payload.id}: ${(error as Error).message}`);
     }
+  }
+
+  public async getChanges(vaultId: string, changeList: checkListItem[]): Promise<string[]> {
+    const changedIds: string[] = [];
+    const tasks = changeList.map(({ id, etag }) => async () => {
+      const isManifest = vaultId === id;
+      const s3Key = isManifest ? _s3manifestKey(vaultId) : `${vaultId}/${id}`;
+      const redisKey = isManifest ? _redisManifestEtagKey(vaultId) : `${vaultId}::${id}::etag`;
+      const [cachedEtag, s3Etag] = await Promise.all([this.#vaultRedis.get(redisKey), this.#s3.getEtag(s3Key)]);
+      if (!s3Etag) {
+        throw new Error(`Item not found in S3: ${id}`);
+      }
+      if (cachedEtag !== s3Etag) {
+        await this.#vaultRedis.set(redisKey, s3Etag, isManifest ? undefined : ETAG_TTL_SECONDS);
+      }
+
+      if (etag !== s3Etag) {
+        changedIds.push(id);
+      }
+    });
+    await runInBatches(tasks, 100, 1_000);
+    return changedIds;
   }
 
   // public async create(accountData: AccountData, envelopes: DeviceEnvelope[], deviceListFile: string): Promise<boolean> {
