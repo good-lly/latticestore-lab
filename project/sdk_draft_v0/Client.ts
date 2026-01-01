@@ -9,6 +9,7 @@ import { ROLE, VAULT_TYPE } from './Consts.js';
 import { loginAccount } from './Account';
 import { uint8ArrayToBase64, now, generateCanonicalJSON } from './Helpers';
 import { DEFAULT_SEED_LENGTH_BYTES, RECOVERY_DEVICE_NAME } from './Consts';
+import { VaultController } from './Vault';
 
 import type { VaultId, Base64, Base64Encrypted } from './Consts.js';
 import type { VaultRegistrationPayload, Vault } from './Vault';
@@ -126,11 +127,30 @@ export class LatticeStoreClient {
 
   public async login(accountName: string, deviceSeed: Uint8Array, service: string = this._serviceUrl) {
     try {
-      const account = await loginAccount(service, accountName, deviceSeed);
+      // TODO implement switch later
+      const persistentConnection = true;
+      const account = await loginAccount(service, accountName, deviceSeed, persistentConnection);
       console.log('Logged in account:', account);
       return account;
     } catch (error) {
       throw error;
     }
+  }
+
+  // Not implemented yet
+  public async addNewDeviceViaRecovery(
+    accountName: string,
+    recoverySeed: Uint8Array,
+    serviceUrl: string = this._serviceUrl,
+    deviceSeed: Uint8Array,
+    deviceName: string,
+  ) {
+    throw new Error('Not implemented yet');
+    const persistentConnection = false;
+
+    const memberBasics = buildMember(recoverySeed);
+    const vault = await VaultController.init(serviceUrl, accountName, memberBasics, persistentConnection);
+    // TODO
+    // const account = await loginAccount(service, accountName, recoverySeed, persistentConnection);
   }
 }

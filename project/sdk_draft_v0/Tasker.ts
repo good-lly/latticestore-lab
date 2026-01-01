@@ -151,6 +151,7 @@ export class Tasker {
   hookVault(v: VaultController) {
     try {
       const creds = v.getVaultCredentials();
+      console.log('Hooking vault to tasker:', creds.vault);
       this.#watchQ.push({
         memberId: creds.memberId,
         vaultId: creds.vaultId,

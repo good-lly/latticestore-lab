@@ -1,3 +1,5 @@
+🚫 Closed / This repo is discontinued. Please follow [LatticeStore](https://github.com/thinking-tools/LatticeStore) for updates.
+
 # latticestore-lab
 
 ## What is this?
@@ -40,17 +42,6 @@ LatticeStore: Every device holds the keys. Syncs via E2EE Quantum-resistant (ML-
 - [/project](./project) main project directory with core functionality based on experiments plus roadmap
 - [JOURNAL.md](./JOURNAL.md) Daily updates in commits
 
-## Current crisis/focus
-
-- [week1](/experiments/week1): CRDT / merging data / encryption structure and sync. More in [JOURNAL.md](./JOURNAL.md)
-
-## Get involved
-
-- [Project progress](https://github.com/users/good-lly/projects/8) project board on GitHub
-- [Issues](https://github.com/users/good-lly/issues) - tell me why this won't work ...
-- Real-time chat in [Signal group](https://signal.group/#CjQKIGEZsuMfgmJlrLYnywMAitQreSuX5NsSlqV1mXRTbCsAEhCrDGEk4Gr1XiEaU8S6F6Dz)
-- Star to watch the chaos unfold!
-
-Part of [thinking.tools](https://thinking.tools) team project.
+  Part of [thinking.tools](https://thinking.tools) team project.
 
 MIT. Fork it. Break it. Have fun.

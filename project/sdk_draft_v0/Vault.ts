@@ -2,11 +2,17 @@ import type { VaultId, VaultType, MemberId, Base64, Timestamp, Base64Encrypted }
 import type { MemberEncryptedDetail, MemberInfoBasics, MemberSlot } from './Members.js';
 import type { Feature } from './features/Features';
 import type { AEADCryptoKey, RawAEADKey } from './CryptoAEAD.js';
+import type { LoginPayload, LoginRequest } from './ApiClient';
 
+import { CryptoPQ } from './CryptoPQ';
+import { sha256 } from './CryptoUtils';
+import { generateCanonicalJSON, now, uint8ArrayToBase64 } from './Helpers';
+import { makeRequest } from './ApiClient';
+import { isValidVaultManifest } from './Validators';
+import { VAULT_TYPE } from './Consts';
 import { IS_MANAGER_ROLE } from './Consts.js';
 import { getManagerKey, decryptMemberList, getFeaturesKey } from './Members.js';
 import { FeatureController } from './features/Features.js';
-import { CryptoPQ } from './CryptoPQ.js';
 import { AEAD } from './CryptoAEAD.js';
 import { getMemberFromMemberSlots } from './Validators.js';
 import { base64ToUint8Array, fromUint8Array } from './Helpers.js';
@@ -38,61 +44,105 @@ export class VaultController {
   #vaultManifest: Vault;
   #etag: string;
   #authToken: string | null = null;
+  #activeMember: MemberInfoBasics;
+  #persistent: boolean = false;
+
   #aeadVaultKey: AEADCryptoKey | null = null;
-  #vaultUnlocked: boolean = false;
-  #activeMember: MemberInfoBasics | null = null;
   #isManagerMember: boolean = false;
   #managersArea: { memberList: MemberEncryptedDetail[]; key: AEADCryptoKey } | null = null;
   #featuresKey: AEADCryptoKey | null = null;
   #features: FeatureController[] = [];
   // #tasker: Tasker | null = null;
-  constructor(vault: Vault, etag: string, authToken: string) {
-    this.#vaultManifest = vault;
+  constructor(
+    vaultManifest: Vault,
+    etag: string,
+    authToken: string,
+    member: MemberInfoBasics,
+    persistentLogin: boolean,
+  ) {
+    this.#vaultManifest = vaultManifest;
     this.#etag = etag;
     this.#authToken = authToken;
+    this.#activeMember = member;
+    this.#persistent = persistentLogin;
+    console.warn('VaultController instance created', this.#etag);
   }
-  async unlockMember(member: MemberInfoBasics): Promise<boolean> {
-    const memberSlot = getMemberFromMemberSlots(this.#vaultManifest.payload.memberSlots, member.memberId);
-    if (memberSlot) {
-      // unwrap aead key
-      const cipherText = base64ToUint8Array(memberSlot.memberKemCiphertext);
-      const sharedKeyRaw = CryptoPQ.decapsulate(cipherText, member.kemKeys.secretKey);
-      const sharedKey = await AEAD.importAEADKey(sharedKeyRaw as RawAEADKey);
-      const encryptedVaultKey = base64ToUint8Array(memberSlot.memberVaultKeyWrapped);
-      const aeadMasterKeyRaw = await AEAD.decrypt(sharedKey, encryptedVaultKey);
-      this.#aeadVaultKey = await AEAD.importAEADKey(aeadMasterKeyRaw as RawAEADKey);
-      if (IS_MANAGER_ROLE(memberSlot.memberRole)) {
-        // decrypt member list area if manager
-        const managersKey = await getManagerKey(aeadMasterKeyRaw as Uint8Array);
-        this.#managersArea = {
-          key: managersKey,
-          memberList: await decryptMemberList(this.#vaultManifest.payload.managerOnlyMemberList, managersKey),
-        };
-        this.#isManagerMember = true;
-        this.#featuresKey = await getFeaturesKey(aeadMasterKeyRaw as Uint8Array);
-      } else {
-        this.#isManagerMember = false;
-        this.#featuresKey = this.#aeadVaultKey;
-      }
-      if (this.#vaultManifest.payload.featuresEncrypted && this.#vaultManifest.payload.featuresEncrypted.length > 0) {
-        const featuresDecrypted = await AEAD.decrypt(
-          this.#featuresKey!,
-          base64ToUint8Array(this.#vaultManifest.payload.featuresEncrypted),
-        );
-        const featuresJson = fromUint8Array(featuresDecrypted);
-        for (const feature of JSON.parse(featuresJson) as Feature[]) {
-          this.#features.push(new FeatureController(feature));
-        }
-      }
-      this.#activeMember = member;
-      aeadMasterKeyRaw.fill(0);
-      sharedKeyRaw.fill(0);
-      this.#vaultUnlocked = true;
-      return true;
+  static async init(
+    serviceUrl: string,
+    accountName: string,
+    member: MemberInfoBasics,
+    persistentLogin: boolean,
+  ): Promise<VaultController> {
+    const loginPayload = {
+      accountName: accountName.trim(),
+      memberId: member.memberId,
+      timestamp: now(),
+    } as LoginPayload;
+    const payloadSha256uint8Array = (await sha256(generateCanonicalJSON(loginPayload), 'uint8array')) as Uint8Array;
+    const loginBody = {
+      payload: loginPayload,
+      payloadHash: uint8ArrayToBase64(payloadSha256uint8Array),
+      signerId: loginPayload.memberId,
+      signature: uint8ArrayToBase64(CryptoPQ.sign(member.dsaKeys.secretKey, payloadSha256uint8Array)),
+    } as LoginRequest;
+    const response = await makeRequest(`${serviceUrl}/login`, 'POST', loginBody);
+    if (!response.ok) {
+      throw new Error(response.message || 'Login failed');
     }
-    this.#vaultUnlocked = false;
-    return false;
+    // validate vault payload and extract account info
+    const vaultManifest = response.accountVault;
+    if (!isValidVaultManifest(vaultManifest, VAULT_TYPE.personal) || vaultManifest.payload.name !== accountName) {
+      throw new Error('Invalid vault manifest received from server');
+    }
+
+    let vault = new VaultController(vaultManifest, response.vaultEtag, response.authToken, member, persistentLogin);
+    await vault.unlockAndSetupVault();
+    return vault;
   }
+
+  isPersistent(): boolean {
+    return this.#persistent;
+  }
+
+  unlockAndSetupVault = async (): Promise<boolean> => {
+    const vault = this.#vaultManifest;
+    const member = this.#activeMember!;
+    const memberSlot = getMemberFromMemberSlots(vault.payload.memberSlots, member.memberId);
+    if (!memberSlot) {
+      // throw new Error('Member slot not found in vault manifest');
+      return false;
+    }
+    const cipherText = base64ToUint8Array(memberSlot.memberKemCiphertext);
+    const sharedKeyRaw = CryptoPQ.decapsulate(cipherText, member.kemKeys.secretKey);
+    const sharedKey = await AEAD.importAEADKey(sharedKeyRaw as RawAEADKey);
+    const encryptedVaultKey = base64ToUint8Array(memberSlot.memberVaultKeyWrapped);
+    const aeadMasterKeyRaw = await AEAD.decrypt(sharedKey, encryptedVaultKey);
+    this.#aeadVaultKey = await AEAD.importAEADKey(aeadMasterKeyRaw as RawAEADKey);
+    if (IS_MANAGER_ROLE(memberSlot.memberRole)) {
+      // decrypt member list area if manager
+      const managersKey = await getManagerKey(aeadMasterKeyRaw as Uint8Array);
+      this.#managersArea = {
+        key: managersKey,
+        memberList: await decryptMemberList(vault.payload.managerOnlyMemberList, managersKey),
+      };
+      this.#isManagerMember = true;
+      this.#featuresKey = await getFeaturesKey(aeadMasterKeyRaw as Uint8Array);
+    } else {
+      this.#isManagerMember = false;
+      this.#featuresKey = this.#aeadVaultKey;
+    }
+    if (vault.payload.featuresEncrypted && vault.payload.featuresEncrypted.length > 0) {
+      const featuresDecrypted = await AEAD.decrypt(
+        this.#featuresKey!,
+        base64ToUint8Array(vault.payload.featuresEncrypted),
+      );
+      const featuresJson = fromUint8Array(featuresDecrypted);
+      for (const feature of JSON.parse(featuresJson) as Feature[]) {
+        this.#features.push(new FeatureController(feature));
+      }
+    }
+    return true;
+  };
 
   // addTasker(tasker: any) {
   //   this.#tasker = tasker;
@@ -104,16 +154,12 @@ export class VaultController {
       etag: this.#etag,
       vault: this.#vaultManifest,
       vaultKey: this.#aeadVaultKey,
-      vaultUnlocked: this.#vaultUnlocked,
       isManagerMember: this.#isManagerMember,
       activeMember: this.#activeMember,
       managersArea: this.#managersArea,
+      persistent: this.#persistent,
       // tasker: this.#tasker,
     };
-  }
-
-  isLocked() {
-    return !this.#vaultUnlocked;
   }
 
   updateAuthToken(newToken: string) {
@@ -125,9 +171,6 @@ export class VaultController {
   // }
 
   getVaultCredentials() {
-    if (this.isLocked() || !this.#activeMember) {
-      throw new Error('Vault is locked');
-    }
     return {
       vaultId: this.#vaultManifest.payload.id,
       memberId: this.#activeMember.memberId,
@@ -140,9 +183,6 @@ export class VaultController {
   }
 
   listFeatures(type?: string): FeatureController[] {
-    if (!this.#vaultUnlocked) {
-      throw new Error('Vault is locked');
-    }
     if (type) {
       return this.#features.filter(feature => feature.feature.featureType === type);
     }
@@ -150,9 +190,6 @@ export class VaultController {
   }
 
   getFeatureById(featureId: string): FeatureController | null {
-    if (!this.#vaultUnlocked) {
-      throw new Error('Vault is locked');
-    }
     for (const feature of this.#features) {
       if (feature.feature.featureId === featureId) {
         return feature;
@@ -162,9 +199,6 @@ export class VaultController {
   }
 
   getFeatureByName(name: string): FeatureController | null {
-    if (!this.#vaultUnlocked) {
-      throw new Error('Vault is locked');
-    }
     for (const feature of this.#features) {
       if (feature.feature.featureName === name) {
         return feature;

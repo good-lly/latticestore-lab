@@ -1,14 +1,8 @@
-import { CryptoPQ } from './CryptoPQ';
-import { sha256 } from './CryptoUtils';
-import { generateCanonicalJSON, now, uint8ArrayToBase64 } from './Helpers';
-import { makeRequest } from './ApiClient';
-import { isValidVaultManifest } from './Validators';
-import { VAULT_TYPE } from './Consts';
 import { createNetworkMonitor } from './NetworkUtils';
 import { Tasker } from './Tasker';
 
 import type { MemberRole, MemberStatus } from './Consts';
-import type { LoginPayload, LoginRequest } from './ApiClient';
+
 // import { MemberSlot } from './Members';
 import { VaultController } from './Vault';
 import { buildMember } from './Members';
@@ -36,35 +30,17 @@ export const loginAccount = async (
   serviceUrl: string,
   accountName: string,
   memberSeed: Uint8Array,
+  persistentLogin: boolean = true,
 ): Promise<Account | null> => {
   const memberBasics = buildMember(memberSeed);
-  const loginPayload = {
-    accountName: accountName.trim(),
-    memberId: memberBasics.memberId,
-    timestamp: now(),
-  } as LoginPayload;
-  const payloadSha256uint8Array = (await sha256(generateCanonicalJSON(loginPayload), 'uint8array')) as Uint8Array;
-  const loginBody = {
-    payload: loginPayload,
-    payloadHash: uint8ArrayToBase64(payloadSha256uint8Array),
-    signerId: loginPayload.memberId,
-    signature: uint8ArrayToBase64(CryptoPQ.sign(memberBasics.dsaKeys.secretKey, payloadSha256uint8Array)),
-  } as LoginRequest;
-  const response = await makeRequest(`${serviceUrl}/login`, 'POST', loginBody);
-  if (!response.ok) {
-    throw new Error(response.message || 'Login failed');
-  }
-  // validate vault payload and extract account info
-  const vaultManifest = response.accountVault;
-  if (!isValidVaultManifest(vaultManifest, VAULT_TYPE.personal) || vaultManifest.payload.name !== accountName) {
-    throw new Error('Invalid vault manifest received from server');
-  }
+  const vault = await VaultController.init(serviceUrl, accountName, memberBasics, persistentLogin);
+
   // const memberSlot = getMemberFromMemberSlots(vaultManifest.payload.memberSlots, loginPayload.memberId);
-  const vault = new VaultController(vaultManifest, response.etag, response.authToken);
-  const unlocked = await vault.unlockMember(memberBasics);
-  if (!unlocked) {
-    throw new Error('Failed to unlock member slot in vault');
-  }
+
+  // const unlocked = await vault.unlockMember(memberBasics);
+  // if (!unlocked) {
+  //   throw new Error('Failed to unlock member slot in vault');
+  // }
   return new Account(serviceUrl, vault);
 };
 
@@ -80,7 +56,9 @@ export class Account extends EventTarget {
     this.#serviceUrl = serviceUrl;
     this.#tasker = new Tasker(this.#networkMonitor, serviceUrl);
     this.#personalVault = vault;
-    this.#tasker.hookVault(this.#personalVault);
+    if (this.#personalVault.isPersistent()) {
+      this.#tasker.hookVault(this.#personalVault);
+    }
   }
 
   getInfo(): any {

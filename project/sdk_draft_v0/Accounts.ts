@@ -96,23 +96,37 @@ export class Accounts {
 
   public async getChanges(vaultId: string, changeList: checkListItem[]): Promise<string[]> {
     const changedIds: string[] = [];
+
     const tasks = changeList.map(({ id, etag }) => async () => {
       const isManifest = vaultId === id;
-      const s3Key = isManifest ? _s3manifestKey(vaultId) : `${vaultId}/${id}`;
       const redisKey = isManifest ? _redisManifestEtagKey(vaultId) : `${vaultId}::${id}::etag`;
-      const [cachedEtag, s3Etag] = await Promise.all([this.#vaultRedis.get(redisKey), this.#s3.getEtag(s3Key)]);
-      if (!s3Etag) {
-        throw new Error(`Item not found in S3: ${id}`);
-      }
-      if (cachedEtag !== s3Etag) {
-        await this.#vaultRedis.set(redisKey, s3Etag, isManifest ? undefined : ETAG_TTL_SECONDS);
+
+      // Fast path: Redis hit
+      const cachedEtag = await this.#vaultRedis.get(redisKey);
+      if (cachedEtag) {
+        if (cachedEtag !== etag) changedIds.push(id);
+        return;
       }
 
-      if (etag !== s3Etag) {
+      // Slow path: Redis miss → S3 fallback
+      const s3Etag = await this.#s3.getEtag(isManifest ? _s3manifestKey(vaultId) : `${vaultId}/${id}`);
+
+      if (!s3Etag || s3Etag !== etag) {
         changedIds.push(id);
       }
+
+      // Populate cache on S3 hit (non-manifest only)
+      if (s3Etag && !isManifest) {
+        await this.#vaultRedis.set(redisKey, s3Etag, ETAG_TTL_SECONDS);
+      }
     });
-    await runInBatches(tasks, 100, 1_000);
+
+    if (tasks.length > 200) {
+      await runInBatches(tasks, 100, 1_000);
+    } else {
+      await Promise.all(tasks.map(task => task()));
+    }
+
     return changedIds;
   }
 
